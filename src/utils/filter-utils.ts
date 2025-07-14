@@ -98,17 +98,31 @@ export function matchPattern(path: string, pattern: string, ignoreCase: boolean 
   // 如果模式不包含通配符，进行精确匹配
   if (!pattern.includes('*') && !pattern.includes('?')) {
     // 精确匹配：完整路径匹配或文件夹名称匹配
-    return path === pattern || 
-           path.endsWith('/' + pattern) ||
-           path.split('/').includes(pattern);
+    if (ignoreCase) {
+      const lowerPath = path.toLowerCase();
+      const lowerPattern = pattern.toLowerCase();
+      return lowerPath === lowerPattern || 
+             lowerPath.endsWith('/' + lowerPattern) ||
+             lowerPath.split('/').includes(lowerPattern);
+    } else {
+      return path === pattern || 
+             path.endsWith('/' + pattern) ||
+             path.split('/').includes(pattern);
+    }
   }
   
   // 处理 "folder/*" 模式（匹配folder下的所有子文件夹）
   if (pattern.endsWith('/*')) {
     const parentFolder = pattern.slice(0, -2); // 移除 /*
-    // 检查路径是否以 parentFolder/ 开头（子文件夹）
-    return path.startsWith(parentFolder + '/') || 
-           path.includes('/' + parentFolder + '/');
+    if (ignoreCase) {
+      const lowerPath = path.toLowerCase();
+      const lowerParent = parentFolder.toLowerCase();
+      return lowerPath.startsWith(lowerParent + '/') || 
+             lowerPath.includes('/' + lowerParent + '/');
+    } else {
+      return path.startsWith(parentFolder + '/') || 
+             path.includes('/' + parentFolder + '/');
+    }
   }
   
   // 将通配符模式转换为正则表达式

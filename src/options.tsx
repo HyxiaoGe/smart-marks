@@ -192,17 +192,31 @@ ${examples.join('\n')}
       // 如果模式不包含通配符，进行精确匹配
       if (!pattern.includes('*') && !pattern.includes('?')) {
         // 精确匹配：完整路径匹配或文件夹名称匹配
-        return folderPath === pattern || 
-               folderPath.endsWith('/' + pattern) ||
-               folderPath.split('/').includes(pattern);
+        if (filterSettings.ignoreCase) {
+          const lowerPath = folderPath.toLowerCase();
+          const lowerPattern = pattern.toLowerCase();
+          return lowerPath === lowerPattern || 
+                 lowerPath.endsWith('/' + lowerPattern) ||
+                 lowerPath.split('/').includes(lowerPattern);
+        } else {
+          return folderPath === pattern || 
+                 folderPath.endsWith('/' + pattern) ||
+                 folderPath.split('/').includes(pattern);
+        }
       }
       
       // 处理 "folder/*" 模式（匹配folder下的所有子文件夹）
       if (pattern.endsWith('/*')) {
         const parentFolder = pattern.slice(0, -2); // 移除 /*
-        // 检查路径是否以 parentFolder/ 开头（子文件夹）
-        return folderPath.startsWith(parentFolder + '/') || 
-               folderPath.includes('/' + parentFolder + '/');
+        if (filterSettings.ignoreCase) {
+          const lowerPath = folderPath.toLowerCase();
+          const lowerParent = parentFolder.toLowerCase();
+          return lowerPath.startsWith(lowerParent + '/') || 
+                 lowerPath.includes('/' + lowerParent + '/');
+        } else {
+          return folderPath.startsWith(parentFolder + '/') || 
+                 folderPath.includes('/' + parentFolder + '/');
+        }
       }
       
       // 将通配符模式转换为正则表达式
