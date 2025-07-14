@@ -41,10 +41,23 @@ function IndexPopup() {
   const handleSmartOrganize = async () => {
     setLoading(true);
     try {
-      // TODO: 实现智能整理功能
-      console.log('开始智能整理书签...');
-      // 这里将来会调用AI服务进行书签分类
-      alert('智能整理功能正在开发中...');
+      // 检查是否配置了API
+      const settings = await chrome.storage.sync.get(['apiSettings']);
+      if (!settings.apiSettings?.apiKey) {
+        if (confirm('还未配置AI服务，是否前往设置页面？')) {
+          chrome.runtime.openOptionsPage();
+        }
+        return;
+      }
+      
+      // 调用后台脚本进行批量整理
+      const response = await chrome.runtime.sendMessage({ action: 'batchOrganize' });
+      
+      if (response.success) {
+        alert(`智能整理完成！\n已处理 ${response.processed} 个书签`);
+      } else {
+        alert(`整理失败: ${response.error || '未知错误'}`);
+      }
     } catch (error) {
       console.error('智能整理失败:', error);
       alert('整理失败，请重试');

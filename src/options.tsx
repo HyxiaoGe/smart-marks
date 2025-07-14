@@ -7,6 +7,13 @@ interface FilterSettings {
   ignoreCase: boolean;
 }
 
+interface APISettings {
+  provider: 'openai' | 'gemini' | '';
+  apiKey: string;
+  model: string;
+  autoClassify: boolean;
+}
+
 interface BookmarkFolder {
   id: string;
   title: string;
@@ -32,6 +39,19 @@ function OptionsPage() {
   const [saving, setSaving] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  
+  const [apiSettings, setApiSettings] = useState<APISettings>({
+    provider: '',
+    apiKey: '',
+    model: '',
+    autoClassify: true
+  });
+  
+  const [testingAPI, setTestingAPI] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   // 加载设置和书签文件夹
   useEffect(() => {
@@ -42,9 +62,12 @@ function OptionsPage() {
   // 加载保存的设置
   const loadSettings = async () => {
     try {
-      const result = await chrome.storage.sync.get(['filterSettings']);
+      const result = await chrome.storage.sync.get(['filterSettings', 'apiSettings']);
       if (result.filterSettings) {
         setFilterSettings(result.filterSettings);
+      }
+      if (result.apiSettings) {
+        setApiSettings(result.apiSettings);
       }
     } catch (error) {
       console.error('加载设置失败:', error);
@@ -92,13 +115,58 @@ function OptionsPage() {
     return folders;
   };
 
+  // 测试API连接
+  const testAPIConnection = async () => {
+    if (!apiSettings.apiKey || !apiSettings.provider) {
+      return;
+    }
+
+    setTestingAPI(true);
+    setApiTestResult(null);
+
+    try {
+      // 发送消息给background script测试API
+      const response = await chrome.runtime.sendMessage({
+        type: 'TEST_API',
+        apiSettings: {
+          provider: apiSettings.provider,
+          apiKey: apiSettings.apiKey,
+          model: apiSettings.model
+        }
+      });
+
+      if (response.success) {
+        setApiTestResult({
+          success: true,
+          message: 'API连接成功！可以正常使用AI分类功能。'
+        });
+      } else {
+        setApiTestResult({
+          success: false,
+          message: response.error || 'API连接失败，请检查密钥是否正确。'
+        });
+      }
+    } catch (error) {
+      console.error('测试API失败:', error);
+      setApiTestResult({
+        success: false,
+        message: '测试失败：' + (error instanceof Error ? error.message : '未知错误')
+      });
+    } finally {
+      setTestingAPI(false);
+    }
+  };
+
   // 保存设置
   const saveSettings = async () => {
     setSaving(true);
     setSyncStatus('syncing');
     
     try {
-      await chrome.storage.sync.set({ filterSettings });
+      await chrome.storage.sync.set({ 
+        filterSettings,
+        apiSettings 
+      });
       setSyncStatus('success');
       setLastSyncTime(new Date());
       
@@ -282,6 +350,161 @@ ${examples.join('\n')}
       <h1 style={{ color: '#333', marginBottom: '30px' }}>
         🔖 Smart Marks 设置
       </h1>
+
+      {/* AI设置 */}
+      <div style={{ 
+        backgroundColor: '#f3f4f6', 
+        padding: '20px', 
+        borderRadius: '8px', 
+        marginBottom: '20px' 
+      }}>
+        <h2 style={{ color: '#333', marginBottom: '15px' }}>
+          🤖 AI智能分类设置
+        </h2>
+
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <input
+              type="checkbox"
+              checked={apiSettings.autoClassify}
+              onChange={(e) => setApiSettings(prev => ({ 
+                ...prev, 
+                autoClassify: e.target.checked 
+              }))}
+            />
+            <span>启用AI自动分类（新书签自动整理到合适的文件夹）</span>
+          </label>
+        </div>
+
+        {apiSettings.autoClassify && (
+          <>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
+                AI服务提供商
+              </label>
+              <select
+                value={apiSettings.provider}
+                onChange={(e) => {
+                  const provider = e.target.value as 'openai' | 'gemini' | '';
+                  setApiSettings(prev => ({ 
+                    ...prev, 
+                    provider,
+                    model: provider === 'openai' ? 'gpt-4o-mini' : provider === 'gemini' ? 'gemini-1.5-flash' : ''
+                  }));
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  fontSize: '14px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
+              >
+                <option value="">请选择AI服务</option>
+                <option value="openai">OpenAI (GPT)</option>
+                <option value="gemini">Google Gemini</option>
+              </select>
+            </div>
+
+            {apiSettings.provider && (
+              <>
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
+                    API密钥
+                  </label>
+                  <input
+                    type="password"
+                    value={apiSettings.apiKey}
+                    onChange={(e) => setApiSettings(prev => ({ 
+                      ...prev, 
+                      apiKey: e.target.value 
+                    }))}
+                    placeholder={`请输入${apiSettings.provider === 'openai' ? 'OpenAI' : 'Google'} API密钥`}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      fontSize: '14px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px'
+                    }}
+                  />
+                  <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
+                    {apiSettings.provider === 'openai' ? (
+                      <span>获取API密钥：<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI控制台</a></span>
+                    ) : (
+                      <span>获取API密钥：<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a></span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
+                    模型选择
+                  </label>
+                  <select
+                    value={apiSettings.model}
+                    onChange={(e) => setApiSettings(prev => ({ 
+                      ...prev, 
+                      model: e.target.value 
+                    }))}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      fontSize: '14px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    {apiSettings.provider === 'openai' ? (
+                      <>
+                        <option value="gpt-4o-mini">GPT-4o-mini (推荐，成本低)</option>
+                        <option value="gpt-4o">GPT-4o (效果更好，成本高)</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5-turbo (经济实惠)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (推荐)</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (更强大)</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {/* 测试API连接按钮 */}
+                <div style={{ marginBottom: '15px' }}>
+                  <button
+                    onClick={testAPIConnection}
+                    disabled={!apiSettings.apiKey || testingAPI}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: testingAPI ? '#ccc' : '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: testingAPI || !apiSettings.apiKey ? 'not-allowed' : 'pointer',
+                      opacity: !apiSettings.apiKey ? 0.6 : 1
+                    }}
+                  >
+                    {testingAPI ? '测试中...' : '测试API连接'}
+                  </button>
+                  {apiTestResult && (
+                    <div style={{ 
+                      marginTop: '10px', 
+                      padding: '10px', 
+                      borderRadius: '4px',
+                      backgroundColor: apiTestResult.success ? '#e8f5e9' : '#ffebee',
+                      color: apiTestResult.success ? '#2e7d32' : '#c62828',
+                      fontSize: '14px'
+                    }}>
+                      {apiTestResult.success ? '✓' : '✗'} {apiTestResult.message}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
 
       {/* 文件夹过滤设置 */}
       <div style={{ 
