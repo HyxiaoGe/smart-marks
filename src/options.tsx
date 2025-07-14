@@ -4,6 +4,7 @@ interface FilterSettings {
   excludeFolders: string[];
   excludePatterns: string[];
   autoFilter: boolean;
+  ignoreCase: boolean;
 }
 
 interface BookmarkFolder {
@@ -22,7 +23,8 @@ function OptionsPage() {
   const [filterSettings, setFilterSettings] = useState<FilterSettings>({
     excludeFolders: [],
     excludePatterns: [],
-    autoFilter: true
+    autoFilter: true,
+    ignoreCase: true
   });
 
   const [bookmarkFolders, setBookmarkFolders] = useState<BookmarkFolder[]>([]);
@@ -211,11 +213,11 @@ ${examples.join('\n')}
       
       // 如果模式以 * 开头或结尾，允许部分匹配
       if (pattern.startsWith('*') || pattern.endsWith('*')) {
-        const regex = new RegExp(regexPattern, 'i');
+        const regex = new RegExp(regexPattern, filterSettings.ignoreCase ? 'i' : '');
         return regex.test(folderPath);
       } else {
         // 否则进行完整路径匹配
-        const regex = new RegExp(`^${regexPattern}$`, 'i');
+        const regex = new RegExp(`^${regexPattern}$`, filterSettings.ignoreCase ? 'i' : '');
         return regex.test(folderPath);
       }
     });
@@ -226,27 +228,6 @@ ${examples.join('\n')}
     return filterSettings.excludeFolders.includes(folderPath) || isMatchedByPattern(folderPath);
   };
 
-  // 添加常用隐私规则
-  const addCommonPrivacyRules = () => {
-    const commonPatterns = ['*隐私*', '*私人*', '*个人*', '*工作*', '*机密*', '*临时*', '*temp*', '*private*', '*personal*'];
-    
-    // 只添加当前不存在的规则
-    setFilterSettings(prev => {
-      const newPatterns = commonPatterns.filter(pattern => 
-        !prev.excludePatterns.includes(pattern)
-      );
-      
-      if (newPatterns.length === 0) {
-        alert('常用隐私规则已经全部添加！');
-        return prev;
-      }
-      
-      return {
-        ...prev,
-        excludePatterns: [...prev.excludePatterns, ...newPatterns]
-      };
-    });
-  };
 
   // 清空所有勾选的文件夹
   const clearAllSelections = () => {
@@ -313,6 +294,20 @@ ${examples.join('\n')}
           </label>
         </div>
 
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              checked={filterSettings.ignoreCase}
+              onChange={(e) => setFilterSettings(prev => ({ 
+                ...prev, 
+                ignoreCase: e.target.checked 
+              }))}
+            />
+            <span>忽略大小写（匹配规则时不区分大小写）</span>
+          </label>
+        </div>
+
         {filterSettings.autoFilter && (
           <>
             <h3 style={{ color: '#555', marginBottom: '10px' }}>选择要排除的文件夹：</h3>
@@ -369,20 +364,6 @@ ${examples.join('\n')}
             </div>
 
             <div style={{ marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              <button
-                onClick={addCommonPrivacyRules}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#FF9800',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                添加常用隐私规则
-              </button>
-              
               <button
                 onClick={addExcludePattern}
                 style={{

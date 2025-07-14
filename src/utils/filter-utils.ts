@@ -6,6 +6,7 @@ interface FilterSettings {
   excludeFolders: string[];
   excludePatterns: string[];
   autoFilter: boolean;
+  ignoreCase: boolean;
 }
 
 /**
@@ -93,7 +94,7 @@ export async function getBookmarkFolderPath(bookmark: chrome.bookmarks.BookmarkT
  * @param pattern 模式（支持*通配符）
  * @returns 是否匹配
  */
-export function matchPattern(path: string, pattern: string): boolean {
+export function matchPattern(path: string, pattern: string, ignoreCase: boolean = true): boolean {
   // 如果模式不包含通配符，进行精确匹配
   if (!pattern.includes('*') && !pattern.includes('?')) {
     // 精确匹配：完整路径匹配或文件夹名称匹配
@@ -118,11 +119,11 @@ export function matchPattern(path: string, pattern: string): boolean {
   
   // 如果模式以 * 开头或结尾，允许部分匹配
   if (pattern.startsWith('*') || pattern.endsWith('*')) {
-    const regex = new RegExp(regexPattern, 'i');
+    const regex = new RegExp(regexPattern, ignoreCase ? 'i' : '');
     return regex.test(path);
   } else {
     // 否则进行完整路径匹配
-    const regex = new RegExp(`^${regexPattern}$`, 'i');
+    const regex = new RegExp(`^${regexPattern}$`, ignoreCase ? 'i' : '');
     return regex.test(path);
   }
 }
@@ -155,7 +156,7 @@ export async function shouldFilterBookmark(
   
   // 检查是否匹配排除模式
   for (const pattern of filterSettings.excludePatterns) {
-    if (matchPattern(folderPath, pattern)) {
+    if (matchPattern(folderPath, pattern, filterSettings.ignoreCase)) {
       console.log(`书签 "${bookmark.title}" 匹配排除模式 "${pattern}"，跳过处理`);
       return true;
     }
@@ -192,9 +193,10 @@ export async function filterBookmarks(
  */
 export function getDefaultFilterSettings(): FilterSettings {
   return {
-    excludeFolders: ['隐私', '私人', '个人'], // 默认排除的常见隐私文件夹
-    excludePatterns: ['*private*', '*personal*', '*temp*'], // 默认排除模式
-    autoFilter: true
+    excludeFolders: [], // 不再设置默认排除文件夹
+    excludePatterns: [], // 不再设置默认排除模式
+    autoFilter: true,
+    ignoreCase: true // 默认忽略大小写
   };
 }
 
