@@ -119,24 +119,26 @@ function OptionsPage() {
     }
   };
 
-  // 切换文件夹排除状态（支持级联选择）
+  // 切换文件夹排除状态（支持级联选择和自定义规则处理）
   const toggleFolderExclusion = (folderPath: string) => {
     setFilterSettings(prev => {
-      const isCurrentlyExcluded = prev.excludeFolders.includes(folderPath);
+      const isInExcludeFolders = prev.excludeFolders.includes(folderPath);
+      const isMatchedByPatterns = isMatchedByPattern(folderPath);
       let newExcludeFolders = [...prev.excludeFolders];
       
-      if (isCurrentlyExcluded) {
-        // 如果当前文件夹被排除，则取消排除它和所有子文件夹
+      if (isInExcludeFolders) {
+        // 如果文件夹在excludeFolders中，移除它和所有子文件夹
         newExcludeFolders = newExcludeFolders.filter(path => 
           path !== folderPath && !path.startsWith(folderPath + '/')
         );
       } else {
-        // 如果当前文件夹未被排除，则添加它
+        // 如果文件夹不在excludeFolders中，添加它
         newExcludeFolders.push(folderPath);
         
-        // 自动添加所有子文件夹
+        // 自动添加所有子文件夹（除非它们已经被自定义规则匹配）
         const childFolders = bookmarkFolders
           .filter(folder => folder.path.startsWith(folderPath + '/'))
+          .filter(folder => !isMatchedByPattern(folder.path)) // 避免重复添加被规则匹配的文件夹
           .map(folder => folder.path);
         
         newExcludeFolders = [...new Set([...newExcludeFolders, ...childFolders])];
@@ -180,6 +182,25 @@ ${examples.join('\n')}
       ...prev,
       excludePatterns: prev.excludePatterns.filter((_, i) => i !== index)
     }));
+  };
+
+  // 检查文件夹路径是否匹配自定义规则
+  const isMatchedByPattern = (folderPath: string): boolean => {
+    return filterSettings.excludePatterns.some(pattern => {
+      // 将通配符模式转换为正则表达式
+      const regexPattern = pattern
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.')
+        .replace(/\//g, '\\/');
+      
+      const regex = new RegExp(`^${regexPattern}$`, 'i');
+      return regex.test(folderPath);
+    });
+  };
+
+  // 检查文件夹是否被排除（包括直接勾选和自定义规则匹配）
+  const isFolderExcluded = (folderPath: string): boolean => {
+    return filterSettings.excludeFolders.includes(folderPath) || isMatchedByPattern(folderPath);
   };
 
   // 添加常用隐私文件夹
@@ -261,14 +282,23 @@ ${examples.join('\n')}
                 >
                   <input
                     type="checkbox"
-                    checked={filterSettings.excludeFolders.includes(folder.path)}
+                    checked={isFolderExcluded(folder.path)}
                     onChange={() => toggleFolderExclusion(folder.path)}
                   />
                   <span style={{ 
                     fontSize: '14px',
-                    color: filterSettings.excludeFolders.includes(folder.path) ? '#f44336' : '#333'
+                    color: isFolderExcluded(folder.path) ? '#f44336' : '#333'
                   }}>
                     {folder.title}
+                    {isMatchedByPattern(folder.path) && !filterSettings.excludeFolders.includes(folder.path) && (
+                      <span style={{ 
+                        fontSize: '12px', 
+                        color: '#FF9800', 
+                        marginLeft: '5px' 
+                      }}>
+                        (规则匹配)
+                      </span>
+                    )}
                   </span>
                   <span style={{ fontSize: '12px', color: '#666' }}>
                     ({folder.path})
@@ -394,14 +424,22 @@ ${examples.join('\n')}
         <h3 style={{ color: '#1976d2', marginBottom: '10px' }}>📝 使用说明</h3>
         <ul style={{ marginLeft: '20px', lineHeight: '1.6' }}>
           <li><strong>级联选择</strong>：勾选父文件夹会自动勾选所有子文件夹</li>
-          <li><strong>自定义规则</strong>：支持通配符模式，如 *私人* 匹配包含"私人"的所有文件夹</li>
+          <li><strong>自定义规则</strong>：
+            <ul style={{ marginLeft: '20px', marginTop: '5px' }}>
+              <li>支持通配符模式，如 *oauth* 匹配包含"oauth"的所有文件夹</li>
+              <li>添加规则后，匹配的文件夹会立即显示为已勾选状态</li>
+              <li>规则匹配的文件夹会显示 <span style={{color: '#FF9800'}}>(规则匹配)</span> 标签</li>
+            </ul>
+          </li>
           <li><strong>常用示例</strong>：
             <ul style={{ marginLeft: '20px', marginTop: '5px' }}>
-              <li>*temp* - 匹配临时文件夹</li>
-              <li>工作/* - 匹配工作文件夹下的所有子文件夹</li>
+              <li>*temp* - 匹配所有包含"temp"的文件夹</li>
+              <li>*oauth* - 匹配所有包含"oauth"的文件夹</li>
+              <li>工作/* - 匹配"工作"文件夹下的所有子文件夹</li>
               <li>Private - 精确匹配名为"Private"的文件夹</li>
             </ul>
           </li>
+          <li><strong>实时效果</strong>：文件夹列表会实时显示哪些文件夹被规则匹配</li>
           <li><strong>同步状态</strong>：设置会自动同步到Chrome账户，可查看同步状态</li>
           <li><strong>隐私保护</strong>：被排除的文件夹中的书签不会被AI处理</li>
         </ul>
