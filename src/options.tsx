@@ -1,0 +1,349 @@
+import React, { useState, useEffect } from 'react';
+
+interface FilterSettings {
+  excludeFolders: string[];
+  excludePatterns: string[];
+  autoFilter: boolean;
+}
+
+interface BookmarkFolder {
+  id: string;
+  title: string;
+  parentId?: string;
+  children?: BookmarkFolder[];
+  path: string;
+  level: number;
+}
+
+/**
+ * 扩展设置页面
+ */
+function OptionsPage() {
+  const [filterSettings, setFilterSettings] = useState<FilterSettings>({
+    excludeFolders: [],
+    excludePatterns: [],
+    autoFilter: true
+  });
+
+  const [bookmarkFolders, setBookmarkFolders] = useState<BookmarkFolder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // 加载设置和书签文件夹
+  useEffect(() => {
+    loadSettings();
+    loadBookmarkFolders();
+  }, []);
+
+  // 加载保存的设置
+  const loadSettings = async () => {
+    try {
+      const result = await chrome.storage.sync.get(['filterSettings']);
+      if (result.filterSettings) {
+        setFilterSettings(result.filterSettings);
+      }
+    } catch (error) {
+      console.error('加载设置失败:', error);
+    }
+  };
+
+  // 加载书签文件夹结构
+  const loadBookmarkFolders = async () => {
+    try {
+      const bookmarkTree = await chrome.bookmarks.getTree();
+      const folders = extractFolders(bookmarkTree);
+      setBookmarkFolders(folders);
+    } catch (error) {
+      console.error('加载书签文件夹失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 从书签树中提取文件夹
+  const extractFolders = (nodes: chrome.bookmarks.BookmarkTreeNode[], parentPath = '', level = 0): BookmarkFolder[] => {
+    const folders: BookmarkFolder[] = [];
+    
+    for (const node of nodes) {
+      if (!node.url) { // 是文件夹
+        const currentPath = parentPath ? `${parentPath}/${node.title}` : node.title;
+        const folder: BookmarkFolder = {
+          id: node.id,
+          title: node.title,
+          parentId: node.parentId,
+          path: currentPath,
+          level: level
+        };
+        
+        folders.push(folder);
+        
+        // 递归处理子文件夹
+        if (node.children) {
+          const childFolders = extractFolders(node.children, currentPath, level + 1);
+          folders.push(...childFolders);
+        }
+      }
+    }
+    
+    return folders;
+  };
+
+  // 保存设置
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      await chrome.storage.sync.set({ filterSettings });
+      // 显示保存成功提示
+      const saveButton = document.getElementById('saveButton');
+      if (saveButton) {
+        saveButton.textContent = '✓ 已保存';
+        saveButton.style.backgroundColor = '#4CAF50';
+        setTimeout(() => {
+          saveButton.textContent = '保存设置';
+          saveButton.style.backgroundColor = '#2196F3';
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('保存设置失败:', error);
+      alert('保存设置失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 切换文件夹排除状态
+  const toggleFolderExclusion = (folderPath: string) => {
+    setFilterSettings(prev => ({
+      ...prev,
+      excludeFolders: prev.excludeFolders.includes(folderPath)
+        ? prev.excludeFolders.filter(path => path !== folderPath)
+        : [...prev.excludeFolders, folderPath]
+    }));
+  };
+
+  // 添加自定义排除模式
+  const addExcludePattern = () => {
+    const pattern = prompt('请输入要排除的文件夹名称或模式（支持通配符*）:');
+    if (pattern && pattern.trim()) {
+      setFilterSettings(prev => ({
+        ...prev,
+        excludePatterns: [...prev.excludePatterns, pattern.trim()]
+      }));
+    }
+  };
+
+  // 删除排除模式
+  const removeExcludePattern = (index: number) => {
+    setFilterSettings(prev => ({
+      ...prev,
+      excludePatterns: prev.excludePatterns.filter((_, i) => i !== index)
+    }));
+  };
+
+  // 添加常用隐私文件夹
+  const addCommonPrivacyFolders = () => {
+    const commonFolders = ['隐私', '私人', '个人', '工作', '机密', '临时'];
+    setFilterSettings(prev => ({
+      ...prev,
+      excludeFolders: [...new Set([...prev.excludeFolders, ...commonFolders])]
+    }));
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <p>正在加载设置...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ 
+      maxWidth: '800px', 
+      margin: '0 auto', 
+      padding: '20px', 
+      fontFamily: 'Arial, sans-serif' 
+    }}>
+      <h1 style={{ color: '#333', marginBottom: '30px' }}>
+        🔖 Smart Marks 设置
+      </h1>
+
+      {/* 文件夹过滤设置 */}
+      <div style={{ 
+        backgroundColor: '#f9f9f9', 
+        padding: '20px', 
+        borderRadius: '8px', 
+        marginBottom: '20px' 
+      }}>
+        <h2 style={{ color: '#333', marginBottom: '15px' }}>
+          🔒 隐私保护设置
+        </h2>
+        
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              checked={filterSettings.autoFilter}
+              onChange={(e) => setFilterSettings(prev => ({ 
+                ...prev, 
+                autoFilter: e.target.checked 
+              }))}
+            />
+            <span>启用文件夹过滤（保护隐私文件夹不被AI处理）</span>
+          </label>
+        </div>
+
+        {filterSettings.autoFilter && (
+          <>
+            <h3 style={{ color: '#555', marginBottom: '10px' }}>选择要排除的文件夹：</h3>
+            
+            <div style={{ 
+              maxHeight: '300px', 
+              overflowY: 'auto', 
+              border: '1px solid #ddd', 
+              borderRadius: '4px',
+              padding: '10px',
+              backgroundColor: 'white',
+              marginBottom: '15px'
+            }}>
+              {bookmarkFolders.map((folder) => (
+                <div 
+                  key={folder.id}
+                  style={{ 
+                    marginLeft: `${folder.level * 20}px`,
+                    marginBottom: '5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={filterSettings.excludeFolders.includes(folder.path)}
+                    onChange={() => toggleFolderExclusion(folder.path)}
+                  />
+                  <span style={{ 
+                    fontSize: '14px',
+                    color: filterSettings.excludeFolders.includes(folder.path) ? '#f44336' : '#333'
+                  }}>
+                    {folder.title}
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#666' }}>
+                    ({folder.path})
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <button
+                onClick={addCommonPrivacyFolders}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#FF9800',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  marginRight: '10px'
+                }}
+              >
+                添加常用隐私文件夹
+              </button>
+              
+              <button
+                onClick={addExcludePattern}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#9C27B0',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                添加自定义规则
+              </button>
+            </div>
+
+            {/* 显示已排除的模式 */}
+            {filterSettings.excludePatterns.length > 0 && (
+              <div>
+                <h4 style={{ color: '#555', marginBottom: '10px' }}>自定义排除规则：</h4>
+                {filterSettings.excludePatterns.map((pattern, index) => (
+                  <div key={index} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px',
+                    marginBottom: '5px'
+                  }}>
+                    <span style={{ 
+                      backgroundColor: '#f44336', 
+                      color: 'white', 
+                      padding: '2px 8px', 
+                      borderRadius: '4px',
+                      fontSize: '12px'
+                    }}>
+                      {pattern}
+                    </span>
+                    <button
+                      onClick={() => removeExcludePattern(index)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#f44336',
+                        cursor: 'pointer',
+                        fontSize: '16px'
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 保存按钮 */}
+      <div style={{ textAlign: 'center', marginTop: '30px' }}>
+        <button
+          id="saveButton"
+          onClick={saveSettings}
+          disabled={saving}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: '#2196F3',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '16px',
+            cursor: saving ? 'not-allowed' : 'pointer',
+            opacity: saving ? 0.6 : 1
+          }}
+        >
+          {saving ? '保存中...' : '保存设置'}
+        </button>
+      </div>
+
+      {/* 使用说明 */}
+      <div style={{ 
+        marginTop: '30px', 
+        padding: '15px', 
+        backgroundColor: '#e3f2fd', 
+        borderRadius: '8px' 
+      }}>
+        <h3 style={{ color: '#1976d2', marginBottom: '10px' }}>📝 使用说明</h3>
+        <ul style={{ marginLeft: '20px', lineHeight: '1.6' }}>
+          <li>选中的文件夹及其子文件夹中的书签不会被AI处理</li>
+          <li>可以直接选择文件夹，或使用自定义规则（支持通配符*）</li>
+          <li>常用隐私文件夹包括：隐私、私人、个人、工作、机密等</li>
+          <li>设置会自动同步到你的Chrome账户</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+export default OptionsPage;

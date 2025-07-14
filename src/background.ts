@@ -2,6 +2,8 @@
  * 后台脚本 - 处理书签事件和AI分类逻辑
  */
 
+import { shouldFilterBookmark, loadFilterSettings } from './utils/filter-utils';
+
 // 监听扩展安装事件
 chrome.runtime.onInstalled.addListener(() => {
   console.log('智能书签管理器已安装');
@@ -21,8 +23,16 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   // 检查是否启用自动分类
   const settings = await chrome.storage.sync.get(['autoClassify']);
   if (settings.autoClassify) {
-    // TODO: 调用AI服务进行书签分类
-    await classifyBookmark(bookmark);
+    // 检查是否应该过滤这个书签
+    const filterSettings = await loadFilterSettings();
+    const shouldFilter = await shouldFilterBookmark(bookmark, filterSettings);
+    
+    if (!shouldFilter) {
+      // 如果不需要过滤，则进行AI分类
+      await classifyBookmark(bookmark);
+    } else {
+      console.log(`书签 "${bookmark.title}" 被过滤，不进行AI处理`);
+    }
   }
 });
 

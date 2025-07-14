@@ -143,15 +143,18 @@ function IndexPopup() {
           }}>
             🔍 搜索书签
           </button>
-          <button style={{
-            padding: '8px 12px',
-            backgroundColor: '#9C27B0',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '12px',
-            cursor: 'pointer'
-          }}>
+          <button 
+            onClick={() => chrome.runtime.openOptionsPage()}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: '#9C27B0',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
             ⚙️ 设置
           </button>
         </div>
