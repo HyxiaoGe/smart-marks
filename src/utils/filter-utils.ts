@@ -94,11 +94,16 @@ export async function getBookmarkFolderPath(bookmark: chrome.bookmarks.BookmarkT
  * @returns 是否匹配
  */
 export function matchPattern(path: string, pattern: string): boolean {
+  // 如果模式不包含通配符，进行精确匹配
+  if (!pattern.includes('*') && !pattern.includes('?')) {
+    return path === pattern || path.includes('/' + pattern);
+  }
+  
   // 将通配符模式转换为正则表达式
   const regexPattern = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
     .replace(/\*/g, '.*')
-    .replace(/\?/g, '.')
-    .replace(/\//g, '\\/');
+    .replace(/\?/g, '.');
   
   const regex = new RegExp(`^${regexPattern}$`, 'i');
   return regex.test(path);

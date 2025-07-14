@@ -187,11 +187,16 @@ ${examples.join('\n')}
   // 检查文件夹路径是否匹配自定义规则
   const isMatchedByPattern = (folderPath: string): boolean => {
     return filterSettings.excludePatterns.some(pattern => {
+      // 如果模式不包含通配符，进行精确匹配
+      if (!pattern.includes('*') && !pattern.includes('?')) {
+        return folderPath === pattern || folderPath.includes('/' + pattern);
+      }
+      
       // 将通配符模式转换为正则表达式
       const regexPattern = pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
         .replace(/\*/g, '.*')
-        .replace(/\?/g, '.')
-        .replace(/\//g, '\\/');
+        .replace(/\?/g, '.');
       
       const regex = new RegExp(`^${regexPattern}$`, 'i');
       return regex.test(folderPath);
@@ -210,6 +215,27 @@ ${examples.join('\n')}
       ...prev,
       excludeFolders: [...new Set([...prev.excludeFolders, ...commonFolders])]
     }));
+  };
+
+  // 清空所有勾选的文件夹
+  const clearAllSelections = () => {
+    if (window.confirm('确定要清空所有勾选的文件夹吗？这将清除所有手动勾选的文件夹，但不会删除自定义规则。')) {
+      setFilterSettings(prev => ({
+        ...prev,
+        excludeFolders: []
+      }));
+    }
+  };
+
+  // 清空所有设置（包括自定义规则）
+  const clearAllSettings = () => {
+    if (window.confirm('确定要清空所有设置吗？这将清除所有勾选的文件夹和自定义规则。')) {
+      setFilterSettings(prev => ({
+        ...prev,
+        excludeFolders: [],
+        excludePatterns: []
+      }));
+    }
   };
 
   if (loading) {
@@ -284,6 +310,10 @@ ${examples.join('\n')}
                     type="checkbox"
                     checked={isFolderExcluded(folder.path)}
                     onChange={() => toggleFolderExclusion(folder.path)}
+                    disabled={isMatchedByPattern(folder.path) && !filterSettings.excludeFolders.includes(folder.path)}
+                    title={isMatchedByPattern(folder.path) && !filterSettings.excludeFolders.includes(folder.path) 
+                      ? "此文件夹被自定义规则匹配，请删除对应规则来取消勾选" 
+                      : ""}
                   />
                   <span style={{ 
                     fontSize: '14px',
@@ -307,7 +337,7 @@ ${examples.join('\n')}
               ))}
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
+            <div style={{ marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
               <button
                 onClick={addCommonPrivacyFolders}
                 style={{
@@ -316,8 +346,7 @@ ${examples.join('\n')}
                   color: 'white',
                   border: 'none',
                   borderRadius: '4px',
-                  cursor: 'pointer',
-                  marginRight: '10px'
+                  cursor: 'pointer'
                 }}
               >
                 添加常用隐私文件夹
@@ -335,6 +364,34 @@ ${examples.join('\n')}
                 }}
               >
                 添加自定义规则
+              </button>
+
+              <button
+                onClick={clearAllSelections}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f44336',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                清空勾选
+              </button>
+
+              <button
+                onClick={clearAllSettings}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#9e9e9e',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                清空所有设置
               </button>
             </div>
 
