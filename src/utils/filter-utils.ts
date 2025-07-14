@@ -96,17 +96,35 @@ export async function getBookmarkFolderPath(bookmark: chrome.bookmarks.BookmarkT
 export function matchPattern(path: string, pattern: string): boolean {
   // 如果模式不包含通配符，进行精确匹配
   if (!pattern.includes('*') && !pattern.includes('?')) {
-    return path === pattern || path.includes('/' + pattern);
+    // 精确匹配：完整路径匹配或文件夹名称匹配
+    return path === pattern || 
+           path.endsWith('/' + pattern) ||
+           path.split('/').includes(pattern);
+  }
+  
+  // 处理 "folder/*" 模式（匹配folder下的所有子文件夹）
+  if (pattern.endsWith('/*')) {
+    const parentFolder = pattern.slice(0, -2); // 移除 /*
+    // 检查路径是否以 parentFolder/ 开头（子文件夹）
+    return path.startsWith(parentFolder + '/') || 
+           path.includes('/' + parentFolder + '/');
   }
   
   // 将通配符模式转换为正则表达式
-  const regexPattern = pattern
+  let regexPattern = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
     .replace(/\*/g, '.*')
     .replace(/\?/g, '.');
   
-  const regex = new RegExp(`^${regexPattern}$`, 'i');
-  return regex.test(path);
+  // 如果模式以 * 开头或结尾，允许部分匹配
+  if (pattern.startsWith('*') || pattern.endsWith('*')) {
+    const regex = new RegExp(regexPattern, 'i');
+    return regex.test(path);
+  } else {
+    // 否则进行完整路径匹配
+    const regex = new RegExp(`^${regexPattern}$`, 'i');
+    return regex.test(path);
+  }
 }
 
 /**

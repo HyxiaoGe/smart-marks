@@ -189,17 +189,35 @@ ${examples.join('\n')}
     return filterSettings.excludePatterns.some(pattern => {
       // 如果模式不包含通配符，进行精确匹配
       if (!pattern.includes('*') && !pattern.includes('?')) {
-        return folderPath === pattern || folderPath.includes('/' + pattern);
+        // 精确匹配：完整路径匹配或文件夹名称匹配
+        return folderPath === pattern || 
+               folderPath.endsWith('/' + pattern) ||
+               folderPath.split('/').includes(pattern);
+      }
+      
+      // 处理 "folder/*" 模式（匹配folder下的所有子文件夹）
+      if (pattern.endsWith('/*')) {
+        const parentFolder = pattern.slice(0, -2); // 移除 /*
+        // 检查路径是否以 parentFolder/ 开头（子文件夹）
+        return folderPath.startsWith(parentFolder + '/') || 
+               folderPath.includes('/' + parentFolder + '/');
       }
       
       // 将通配符模式转换为正则表达式
-      const regexPattern = pattern
+      let regexPattern = pattern
         .replace(/[.+^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
         .replace(/\*/g, '.*')
         .replace(/\?/g, '.');
       
-      const regex = new RegExp(`^${regexPattern}$`, 'i');
-      return regex.test(folderPath);
+      // 如果模式以 * 开头或结尾，允许部分匹配
+      if (pattern.startsWith('*') || pattern.endsWith('*')) {
+        const regex = new RegExp(regexPattern, 'i');
+        return regex.test(folderPath);
+      } else {
+        // 否则进行完整路径匹配
+        const regex = new RegExp(`^${regexPattern}$`, 'i');
+        return regex.test(folderPath);
+      }
     });
   };
 
@@ -208,13 +226,26 @@ ${examples.join('\n')}
     return filterSettings.excludeFolders.includes(folderPath) || isMatchedByPattern(folderPath);
   };
 
-  // 添加常用隐私文件夹
-  const addCommonPrivacyFolders = () => {
-    const commonFolders = ['隐私', '私人', '个人', '工作', '机密', '临时'];
-    setFilterSettings(prev => ({
-      ...prev,
-      excludeFolders: [...new Set([...prev.excludeFolders, ...commonFolders])]
-    }));
+  // 添加常用隐私规则
+  const addCommonPrivacyRules = () => {
+    const commonPatterns = ['*隐私*', '*私人*', '*个人*', '*工作*', '*机密*', '*临时*', '*temp*', '*private*', '*personal*'];
+    
+    // 只添加当前不存在的规则
+    setFilterSettings(prev => {
+      const newPatterns = commonPatterns.filter(pattern => 
+        !prev.excludePatterns.includes(pattern)
+      );
+      
+      if (newPatterns.length === 0) {
+        alert('常用隐私规则已经全部添加！');
+        return prev;
+      }
+      
+      return {
+        ...prev,
+        excludePatterns: [...prev.excludePatterns, ...newPatterns]
+      };
+    });
   };
 
   // 清空所有勾选的文件夹
@@ -339,7 +370,7 @@ ${examples.join('\n')}
 
             <div style={{ marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
               <button
-                onClick={addCommonPrivacyFolders}
+                onClick={addCommonPrivacyRules}
                 style={{
                   padding: '8px 16px',
                   backgroundColor: '#FF9800',
@@ -349,7 +380,7 @@ ${examples.join('\n')}
                   cursor: 'pointer'
                 }}
               >
-                添加常用隐私文件夹
+                添加常用隐私规则
               </button>
               
               <button
