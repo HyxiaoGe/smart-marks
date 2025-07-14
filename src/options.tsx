@@ -28,6 +28,8 @@ function OptionsPage() {
   const [bookmarkFolders, setBookmarkFolders] = useState<BookmarkFolder[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // 加载设置和书签文件夹
   useEffect(() => {
@@ -91,8 +93,13 @@ function OptionsPage() {
   // 保存设置
   const saveSettings = async () => {
     setSaving(true);
+    setSyncStatus('syncing');
+    
     try {
       await chrome.storage.sync.set({ filterSettings });
+      setSyncStatus('success');
+      setLastSyncTime(new Date());
+      
       // 显示保存成功提示
       const saveButton = document.getElementById('saveButton');
       if (saveButton) {
@@ -105,29 +112,64 @@ function OptionsPage() {
       }
     } catch (error) {
       console.error('保存设置失败:', error);
+      setSyncStatus('error');
       alert('保存设置失败，请重试');
     } finally {
       setSaving(false);
     }
   };
 
-  // 切换文件夹排除状态
+  // 切换文件夹排除状态（支持级联选择）
   const toggleFolderExclusion = (folderPath: string) => {
-    setFilterSettings(prev => ({
-      ...prev,
-      excludeFolders: prev.excludeFolders.includes(folderPath)
-        ? prev.excludeFolders.filter(path => path !== folderPath)
-        : [...prev.excludeFolders, folderPath]
-    }));
+    setFilterSettings(prev => {
+      const isCurrentlyExcluded = prev.excludeFolders.includes(folderPath);
+      let newExcludeFolders = [...prev.excludeFolders];
+      
+      if (isCurrentlyExcluded) {
+        // 如果当前文件夹被排除，则取消排除它和所有子文件夹
+        newExcludeFolders = newExcludeFolders.filter(path => 
+          path !== folderPath && !path.startsWith(folderPath + '/')
+        );
+      } else {
+        // 如果当前文件夹未被排除，则添加它
+        newExcludeFolders.push(folderPath);
+        
+        // 自动添加所有子文件夹
+        const childFolders = bookmarkFolders
+          .filter(folder => folder.path.startsWith(folderPath + '/'))
+          .map(folder => folder.path);
+        
+        newExcludeFolders = [...new Set([...newExcludeFolders, ...childFolders])];
+      }
+      
+      return {
+        ...prev,
+        excludeFolders: newExcludeFolders
+      };
+    });
   };
 
   // 添加自定义排除模式
   const addExcludePattern = () => {
-    const pattern = prompt('请输入要排除的文件夹名称或模式（支持通配符*）:');
+    const examples = [
+      '*私人*     - 匹配包含"私人"的所有文件夹',
+      '*temp*     - 匹配包含"temp"的所有文件夹',
+      '工作/*     - 匹配"工作"文件夹下的所有子文件夹',
+      'Private    - 精确匹配名为"Private"的文件夹'
+    ];
+    
+    const pattern = prompt(`请输入要排除的文件夹名称或模式（支持通配符*）:
+
+示例：
+${examples.join('\n')}
+
+输入你的规则:`);
+    
     if (pattern && pattern.trim()) {
+      const trimmedPattern = pattern.trim();
       setFilterSettings(prev => ({
         ...prev,
-        excludePatterns: [...prev.excludePatterns, pattern.trim()]
+        excludePatterns: [...prev.excludePatterns, trimmedPattern]
       }));
     }
   };
@@ -325,6 +367,21 @@ function OptionsPage() {
         >
           {saving ? '保存中...' : '保存设置'}
         </button>
+        
+        {/* 同步状态显示 */}
+        <div style={{ marginTop: '10px', fontSize: '14px' }}>
+          {syncStatus === 'syncing' && (
+            <span style={{ color: '#FF9800' }}>⏳ 正在同步到Chrome账户...</span>
+          )}
+          {syncStatus === 'success' && lastSyncTime && (
+            <span style={{ color: '#4CAF50' }}>
+              ✓ 已同步到Chrome账户 ({lastSyncTime.toLocaleTimeString()})
+            </span>
+          )}
+          {syncStatus === 'error' && (
+            <span style={{ color: '#f44336' }}>✗ 同步失败，请重试</span>
+          )}
+        </div>
       </div>
 
       {/* 使用说明 */}
@@ -336,10 +393,17 @@ function OptionsPage() {
       }}>
         <h3 style={{ color: '#1976d2', marginBottom: '10px' }}>📝 使用说明</h3>
         <ul style={{ marginLeft: '20px', lineHeight: '1.6' }}>
-          <li>选中的文件夹及其子文件夹中的书签不会被AI处理</li>
-          <li>可以直接选择文件夹，或使用自定义规则（支持通配符*）</li>
-          <li>常用隐私文件夹包括：隐私、私人、个人、工作、机密等</li>
-          <li>设置会自动同步到你的Chrome账户</li>
+          <li><strong>级联选择</strong>：勾选父文件夹会自动勾选所有子文件夹</li>
+          <li><strong>自定义规则</strong>：支持通配符模式，如 *私人* 匹配包含"私人"的所有文件夹</li>
+          <li><strong>常用示例</strong>：
+            <ul style={{ marginLeft: '20px', marginTop: '5px' }}>
+              <li>*temp* - 匹配临时文件夹</li>
+              <li>工作/* - 匹配工作文件夹下的所有子文件夹</li>
+              <li>Private - 精确匹配名为"Private"的文件夹</li>
+            </ul>
+          </li>
+          <li><strong>同步状态</strong>：设置会自动同步到Chrome账户，可查看同步状态</li>
+          <li><strong>隐私保护</strong>：被排除的文件夹中的书签不会被AI处理</li>
         </ul>
       </div>
     </div>
