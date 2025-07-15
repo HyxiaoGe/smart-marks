@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 function IndexPopup() {
   const [bookmarkCount, setBookmarkCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState<boolean>(false);
 
   // 获取书签数量
   useEffect(() => {
@@ -38,25 +39,69 @@ function IndexPopup() {
   }, []);
 
   // 处理智能整理按钮点击
-  const handleSmartOrganize = async () => {
+  const handleSmartOrganize = async (mode: string = 'normal') => {
     setLoading(true);
     try {
       // 检查是否配置了API
       const settings = await chrome.storage.sync.get(['apiSettings']);
-      if (!settings.apiSettings?.apiKey) {
+      const apiKey = settings.apiSettings?.provider === 'openai' 
+        ? settings.apiSettings?.openaiKey 
+        : settings.apiSettings?.geminiKey;
+        
+      if (!apiKey) {
         if (confirm('还未配置AI服务，是否前往设置页面？')) {
           chrome.runtime.openOptionsPage();
         }
         return;
       }
       
-      // 调用后台脚本进行批量整理
-      const response = await chrome.runtime.sendMessage({ action: 'batchOrganize' });
-      
-      if (response.success) {
-        alert(`智能整理完成！\n已处理 ${response.processed} 个书签`);
+      // 根据模式执行不同操作
+      if (mode === 'preview') {
+        // 预览模式
+        const response = await chrome.runtime.sendMessage({ 
+          action: 'previewOrganize' 
+        });
+        
+        if (response.success) {
+          // 显示预览结果
+          chrome.windows.create({
+            url: chrome.runtime.getURL('preview.html'),
+            type: 'popup',
+            width: 800,
+            height: 600
+          });
+        } else {
+          alert(`预览失败: ${response.error || '未知错误'}`);
+        }
+      } else if (mode === 'single') {
+        // 单文件夹模式
+        chrome.windows.create({
+          url: chrome.runtime.getURL('folder-selector.html'),
+          type: 'popup',
+          width: 600,
+          height: 500
+        });
       } else {
-        alert(`整理失败: ${response.error || '未知错误'}`);
+        // 正常批量整理
+        const confirmMsg = '智能整理将移动未分类的书签到"智能分类"文件夹。\n\n' +
+                          '• 已处理过的书签不会重复处理\n' +
+                          '• 隐私文件夹中的书签不会被处理\n' +
+                          '• 建议先使用"预览模式"查看效果\n\n' +
+                          '确定要继续吗？';
+        
+        if (!confirm(confirmMsg)) {
+          return;
+        }
+        
+        const response = await chrome.runtime.sendMessage({ 
+          action: 'batchOrganize' 
+        });
+        
+        if (response.success) {
+          alert(`智能整理完成！\n已处理 ${response.processed} 个书签`);
+        } else {
+          alert(`整理失败: ${response.error || '未知错误'}`);
+        }
       }
     } catch (error) {
       console.error('智能整理失败:', error);
@@ -105,23 +150,84 @@ function IndexPopup() {
           </span>
         </div>
         
-        <button
-          onClick={handleSmartOrganize}
-          disabled={loading}
-          style={{
-            width: '100%',
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleSmartOrganize}
+            disabled={loading}
+            style={{
+              flex: 1,
+              padding: '10px',
+              backgroundColor: loading ? '#ccc' : '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              fontSize: '14px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'background-color 0.3s'
+            }}
+          >
+            {loading ? '处理中...' : '🤖 智能整理'}
+          </button>
+          <button
+            onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+            style={{
+              padding: '10px',
+              backgroundColor: '#2196F3',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
+          >
+            ⚙️
+          </button>
+        </div>
+        
+        {showAdvancedOptions && (
+          <div style={{
+            marginTop: '10px',
             padding: '10px',
-            backgroundColor: loading ? '#ccc' : '#4CAF50',
-            color: 'white',
-            border: 'none',
+            backgroundColor: '#f0f0f0',
             borderRadius: '5px',
-            fontSize: '14px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            transition: 'background-color 0.3s'
-          }}
-        >
-          {loading ? '处理中...' : '🤖 智能整理'}
-        </button>
+            fontSize: '12px'
+          }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px' }}>高级选项</h4>
+            <button
+              onClick={() => handleSmartOrganize('preview')}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '6px',
+                backgroundColor: '#FF9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                cursor: loading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              👁️ 预览模式（仅显示建议）
+            </button>
+            <button
+              onClick={() => handleSmartOrganize('single')}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#9C27B0',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                cursor: loading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              📁 整理单个文件夹
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ 

@@ -8,6 +8,32 @@ import { classifyBookmark as aiClassifyBookmark } from './services/ai-service';
 // 存储页面元数据的临时缓存
 const pageMetadataCache = new Map<string, any>();
 
+// 存储已处理的书签ID，避免重复处理
+const processedBookmarks = new Set<string>();
+
+// 加载已处理的书签记录
+async function loadProcessedBookmarks() {
+  try {
+    const result = await chrome.storage.local.get('processedBookmarks');
+    if (result.processedBookmarks) {
+      result.processedBookmarks.forEach((id: string) => processedBookmarks.add(id));
+    }
+  } catch (error) {
+    console.error('加载已处理书签记录失败:', error);
+  }
+}
+
+// 保存已处理的书签记录
+async function saveProcessedBookmarks() {
+  try {
+    await chrome.storage.local.set({
+      processedBookmarks: Array.from(processedBookmarks)
+    });
+  } catch (error) {
+    console.error('保存已处理书签记录失败:', error);
+  }
+}
+
 // 监听扩展安装事件
 chrome.runtime.onInstalled.addListener(() => {
   console.log('智能书签管理器已安装');
@@ -18,7 +44,13 @@ chrome.runtime.onInstalled.addListener(() => {
     aiModel: 'gpt-4o-mini',
     language: 'zh-CN'
   });
+  
+  // 加载已处理的书签记录
+  loadProcessedBookmarks();
 });
+
+// 扩展启动时也加载记录
+loadProcessedBookmarks();
 
 // 监听新书签创建事件
 chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
@@ -174,6 +206,12 @@ async function simulateAIClassification(bookmark: chrome.bookmarks.BookmarkTreeN
  */
 async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNode, category: string) {
   try {
+    // 检查是否已处理过
+    if (bookmark.id && processedBookmarks.has(bookmark.id)) {
+      console.log(`书签 "${bookmark.title}" 已处理过，跳过`);
+      return;
+    }
+    
     // 查找或创建分类文件夹
     const categoryFolder = await findOrCreateFolder(category);
     
@@ -183,6 +221,10 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
         parentId: categoryFolder.id
       });
       console.log(`书签 "${bookmark.title}" 已移动到 "${category}" 文件夹`);
+      
+      // 记录已处理
+      processedBookmarks.add(bookmark.id);
+      await saveProcessedBookmarks();
     }
   } catch (error) {
     console.error('移动书签失败:', error);
@@ -341,6 +383,131 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: true, processed: bookmarksToOrganize.length });
       } catch (error) {
         console.error('批量整理失败:', error);
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true; // 保持消息通道开放
+  } else if (request.action === 'organizeSingleFolder') {
+    // 处理单个文件夹整理
+    (async () => {
+      try {
+        console.log('开始整理文件夹:', request.folderId);
+        
+        // 获取API设置
+        const settings = await chrome.storage.sync.get(['apiSettings']);
+        const apiSettings = settings.apiSettings;
+        
+        const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+        
+        if (!apiKey) {
+          sendResponse({ success: false, error: '请先配置API密钥' });
+          return;
+        }
+        
+        // 获取文件夹中的所有书签
+        const folderBookmarks = await chrome.bookmarks.getChildren(request.folderId);
+        const bookmarksToOrganize = folderBookmarks.filter(bookmark => 
+          bookmark.url && !processedBookmarks.has(bookmark.id)
+        );
+        
+        // 批量分类
+        for (const bookmark of bookmarksToOrganize) {
+          const metadata = pageMetadataCache.get(bookmark.url || '');
+          await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
+          // 添加延迟避免过快调用
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        sendResponse({ success: true, processed: bookmarksToOrganize.length });
+      } catch (error) {
+        console.error('文件夹整理失败:', error);
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true; // 保持消息通道开放
+  } else if (request.action === 'previewOrganize') {
+    // 预览整理（不实际移动）
+    (async () => {
+      try {
+        console.log('开始预览整理...');
+        
+        // 获取所有书签
+        const bookmarks = await chrome.bookmarks.getTree();
+        const allBookmarks = flattenBookmarks(bookmarks);
+        
+        // 过滤出需要整理的书签
+        const bookmarksToOrganize = allBookmarks.filter(bookmark => 
+          bookmark.url && !isInSmartFolder(bookmark) && !processedBookmarks.has(bookmark.id)
+        );
+        
+        // 获取API设置
+        const settings = await chrome.storage.sync.get(['apiSettings']);
+        const apiSettings = settings.apiSettings;
+        
+        const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+        
+        if (!apiKey) {
+          sendResponse({ success: false, error: '请先配置API密钥' });
+          return;
+        }
+        
+        // 收集预览结果
+        const previewResults = [];
+        
+        for (const bookmark of bookmarksToOrganize.slice(0, 10)) { // 只预览前10个
+          try {
+            const metadata = pageMetadataCache.get(bookmark.url || '');
+            const bookmarkInfo = {
+              title: bookmark.title,
+              url: bookmark.url,
+              description: metadata?.description,
+              keywords: metadata?.keywords
+            };
+            
+            const result = await aiClassifyBookmark(bookmarkInfo, apiSettings);
+            previewResults.push({
+              bookmark: {
+                id: bookmark.id,
+                title: bookmark.title,
+                url: bookmark.url
+              },
+              suggestion: {
+                category: result.category,
+                confidence: result.confidence,
+                reasoning: result.reasoning
+              }
+            });
+          } catch (error) {
+            console.error('预览书签分类失败:', error);
+          }
+          
+          // 添加延迟
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        // 保存预览结果供预览页面使用
+        await chrome.storage.local.set({ previewResults });
+        
+        sendResponse({ success: true, results: previewResults });
+      } catch (error) {
+        console.error('预览失败:', error);
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true; // 保持消息通道开放
+  } else if (request.action === 'moveBookmark') {
+    // 处理单个书签移动
+    (async () => {
+      try {
+        const bookmark = await chrome.bookmarks.get(request.bookmarkId);
+        if (bookmark.length > 0) {
+          await moveBookmarkToCategory(bookmark[0], request.category);
+          sendResponse({ success: true });
+        } else {
+          sendResponse({ success: false, error: '书签不存在' });
+        }
+      } catch (error) {
+        console.error('移动书签失败:', error);
         sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
       }
     })();
