@@ -34,7 +34,12 @@
     "permissions": [
       "bookmarks",
       "storage",
-      "activeTab"
+      "activeTab",
+      "tabs"
+    ],
+    "host_permissions": [
+      "https://api.openai.com/*",
+      "https://generativelanguage.googleapis.com/*"
     ]
   }
 }

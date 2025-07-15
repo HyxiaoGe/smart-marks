@@ -86,6 +86,11 @@ function OptionsPage() {
       setLoading(false);
     }
   };
+  
+  // 保存按钮时清除测试结果
+  useEffect(() => {
+    setApiTestResult(null);
+  }, [apiSettings.apiKey, apiSettings.provider]);
 
   // 从书签树中提取文件夹
   const extractFolders = (nodes: chrome.bookmarks.BookmarkTreeNode[], parentPath = '', level = 0): BookmarkFolder[] => {

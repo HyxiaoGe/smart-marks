@@ -191,27 +191,37 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
  * @returns 测试结果
  */
 async function testAPIConnection(apiSettings: any) {
+  console.log('开始测试API连接:', apiSettings.provider);
+  
   try {
     if (apiSettings.provider === 'openai') {
+      console.log('测试OpenAI API...');
       const response = await fetch('https://api.openai.com/v1/models', {
         headers: {
           'Authorization': `Bearer ${apiSettings.apiKey}`
         }
       });
       
-      if (response.ok) {
-        return { success: true };
-      } else {
-        const error = await response.json();
-        return { success: false, error: error.error?.message || '无效的API密钥' };
-      }
-    } else if (apiSettings.provider === 'gemini') {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiSettings.apiKey}`);
+      console.log('OpenAI响应状态:', response.status);
       
       if (response.ok) {
         return { success: true };
       } else {
         const error = await response.json();
+        console.error('OpenAI API错误:', error);
+        return { success: false, error: error.error?.message || '无效的API密钥' };
+      }
+    } else if (apiSettings.provider === 'gemini') {
+      console.log('测试Gemini API...');
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiSettings.apiKey}`);
+      
+      console.log('Gemini响应状态:', response.status);
+      
+      if (response.ok) {
+        return { success: true };
+      } else {
+        const error = await response.json();
+        console.error('Gemini API错误:', error);
         return { success: false, error: error.error?.message || '无效的API密钥' };
       }
     }
@@ -219,7 +229,7 @@ async function testAPIConnection(apiSettings: any) {
     return { success: false, error: '不支持的AI提供商' };
   } catch (error) {
     console.error('测试API连接失败:', error);
-    return { success: false, error: '网络连接失败' };
+    return { success: false, error: error instanceof Error ? error.message : '网络连接失败' };
   }
 }
 
@@ -278,14 +288,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }, 5 * 60 * 1000);
     
     sendResponse({ success: true });
+    return false;
   } else if (request.type === 'TEST_API') {
+    console.log('收到测试API请求:', request);
     // 测试API连接
     testAPIConnection(request.apiSettings).then(result => {
+      console.log('API测试结果:', result);
       sendResponse(result);
+    }).catch(error => {
+      console.error('API测试异常:', error);
+      sendResponse({ success: false, error: error.message });
     });
     return true; // 保持消息通道开放
   } else if (request.action === 'batchOrganize') {
-    try {
+    // 使用async函数处理批量整理
+    (async () => {
+      try {
       console.log('开始批量整理书签...');
       
       // 获取所有书签
@@ -314,12 +332,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-      sendResponse({ success: true, processed: bookmarksToOrganize.length });
-    } catch (error) {
-      console.error('批量整理失败:', error);
-      sendResponse({ success: false, error: error.message });
-    }
+        sendResponse({ success: true, processed: bookmarksToOrganize.length });
+      } catch (error) {
+        console.error('批量整理失败:', error);
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true; // 保持消息通道开放
   }
+  return false;
 });
 
 /**
