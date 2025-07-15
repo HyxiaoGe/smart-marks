@@ -4,6 +4,7 @@
 
 import { shouldFilterBookmark, loadFilterSettings } from './utils/filter-utils';
 import { classifyBookmark as aiClassifyBookmark } from './services/ai-service';
+import { showNotification, showProgressNotification, clearProgressNotification } from './utils/notification';
 
 // 存储页面元数据的临时缓存
 const pageMetadataCache = new Map<string, any>();
@@ -225,9 +226,21 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
       // 记录已处理
       processedBookmarks.add(bookmark.id);
       await saveProcessedBookmarks();
+      
+      // 显示成功通知
+      await showNotification(
+        '书签已整理',
+        `"${bookmark.title}" 已移动到 "${category}" 文件夹`,
+        'success'
+      );
     }
   } catch (error) {
     console.error('移动书签失败:', error);
+    await showNotification(
+      '整理失败',
+      `无法移动书签 "${bookmark.title}": ${error instanceof Error ? error.message : '未知错误'}`,
+      'error'
+    );
   }
 }
 
@@ -286,13 +299,31 @@ async function testAPIConnection(apiSettings: any) {
  */
 async function findOrCreateFolder(folderName: string): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
   try {
-    // 获取书签栏
-    const bookmarkBar = await chrome.bookmarks.getTree();
-    const bookmarkBarNode = bookmarkBar[0].children?.find(node => node.title === '书签栏');
+    // 获取书签树
+    const bookmarkTree = await chrome.bookmarks.getTree();
+    
+    // 查找书签栏 - Chrome的根节点通常有三个子节点
+    // [0] 是根节点，其子节点包括：书签栏(id="1")、其他书签(id="2")、移动设备书签(id="3")
+    let bookmarkBarNode = bookmarkTree[0].children?.find(node => node.id === '1');
+    
+    // 如果通过ID找不到，尝试通过标题查找（支持多语言）
+    if (!bookmarkBarNode) {
+      bookmarkBarNode = bookmarkTree[0].children?.find(node => 
+        node.title === '书签栏' || 
+        node.title === 'Bookmarks Bar' ||
+        node.title === 'Bookmarks bar' ||
+        node.id === '1'
+      );
+    }
     
     if (!bookmarkBarNode) {
-      console.error('找不到书签栏');
-      return null;
+      console.error('找不到书签栏，尝试使用其他书签文件夹');
+      // 使用"其他书签"作为备选
+      bookmarkBarNode = bookmarkTree[0].children?.find(node => node.id === '2');
+      if (!bookmarkBarNode) {
+        console.error('找不到任何可用的书签文件夹');
+        return null;
+      }
     }
     
     // 在书签栏中查找智能分类文件夹
@@ -356,10 +387,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const bookmarks = await chrome.bookmarks.getTree();
       const allBookmarks = flattenBookmarks(bookmarks);
       
-      // 过滤出需要整理的书签（排除已在智能分类文件夹中的）
-      const bookmarksToOrganize = allBookmarks.filter(bookmark => 
-        bookmark.url && !isInSmartFolder(bookmark)
-      );
+      // 获取过滤器设置
+      const filterSettings = await loadFilterSettings();
+      
+      // 过滤出需要整理的书签
+      const bookmarksToOrganize = [];
+      for (const bookmark of allBookmarks) {
+        if (!bookmark.url) continue;
+        
+        // 检查是否在智能分类文件夹中
+        const inSmartFolder = await isInSmartFolder(bookmark);
+        if (inSmartFolder) continue;
+        
+        // 检查是否已处理过
+        if (bookmark.id && processedBookmarks.has(bookmark.id)) continue;
+        
+        // 检查是否应该被过滤
+        const shouldFilter = await shouldFilterBookmark(bookmark, filterSettings);
+        if (shouldFilter) {
+          console.log(`书签 "${bookmark.title}" 被过滤，跳过处理`);
+          continue;
+        }
+        
+        bookmarksToOrganize.push(bookmark);
+      }
       
       // 获取API设置
       const settings = await chrome.storage.sync.get(['apiSettings']);
@@ -372,15 +423,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
       
+      // 显示开始通知
+      await showNotification(
+        '开始智能整理',
+        `准备处理 ${bookmarksToOrganize.length} 个书签`,
+        'info'
+      );
+      
       // 批量分类
-      for (const bookmark of bookmarksToOrganize) {
+      for (let i = 0; i < bookmarksToOrganize.length; i++) {
+        const bookmark = bookmarksToOrganize[i];
+        
+        // 显示进度
+        await showProgressNotification(i + 1, bookmarksToOrganize.length, bookmark.title);
+        
         const metadata = pageMetadataCache.get(bookmark.url || '');
         await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
         // 添加延迟避免过快调用
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-        sendResponse({ success: true, processed: bookmarksToOrganize.length });
+      // 清除进度通知
+      await clearProgressNotification();
+      
+      // 显示完成通知
+      await showNotification(
+        '智能整理完成',
+        `成功处理 ${bookmarksToOrganize.length} 个书签`,
+        'success'
+      );
+      
+      sendResponse({ success: true, processed: bookmarksToOrganize.length });
       } catch (error) {
         console.error('批量整理失败:', error);
         sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
@@ -435,10 +508,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const bookmarks = await chrome.bookmarks.getTree();
         const allBookmarks = flattenBookmarks(bookmarks);
         
+        // 获取过滤器设置
+        const filterSettings = await loadFilterSettings();
+        
         // 过滤出需要整理的书签
-        const bookmarksToOrganize = allBookmarks.filter(bookmark => 
-          bookmark.url && !isInSmartFolder(bookmark) && !processedBookmarks.has(bookmark.id)
-        );
+        const bookmarksToOrganize = [];
+        for (const bookmark of allBookmarks) {
+          if (!bookmark.url) continue;
+          
+          // 检查是否在智能分类文件夹中
+          const inSmartFolder = await isInSmartFolder(bookmark);
+          if (inSmartFolder) continue;
+          
+          // 检查是否已处理过
+          if (bookmark.id && processedBookmarks.has(bookmark.id)) continue;
+          
+          // 检查是否应该被过滤
+          const shouldFilter = await shouldFilterBookmark(bookmark, filterSettings);
+          if (shouldFilter) {
+            console.log(`书签 "${bookmark.title}" 被过滤，跳过处理`);
+            continue;
+          }
+          
+          bookmarksToOrganize.push(bookmark);
+        }
         
         // 获取API设置
         const settings = await chrome.storage.sync.get(['apiSettings']);
@@ -544,8 +637,24 @@ function flattenBookmarks(bookmarks: chrome.bookmarks.BookmarkTreeNode[]): chrom
  * @param bookmark 书签对象
  * @returns 是否在智能分类文件夹中
  */
-function isInSmartFolder(bookmark: chrome.bookmarks.BookmarkTreeNode): boolean {
-  // TODO: 实现检查逻辑
-  // 这里需要遍历父节点路径，检查是否在"智能分类"文件夹下
-  return false;
+async function isInSmartFolder(bookmark: chrome.bookmarks.BookmarkTreeNode): Promise<boolean> {
+  try {
+    if (!bookmark.parentId) return false;
+    
+    let currentId = bookmark.parentId;
+    
+    // 向上遍历父节点，检查是否在"智能分类"文件夹下
+    while (currentId) {
+      const [parentNode] = await chrome.bookmarks.get(currentId);
+      if (parentNode.title === '智能分类') {
+        return true;
+      }
+      currentId = parentNode.parentId;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('检查书签位置失败:', error);
+    return false;
+  }
 }

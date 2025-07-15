@@ -37,7 +37,8 @@ const manifest: PlasmoManifest = {
     "bookmarks",        // 书签管理权限
     "storage",          // 存储权限
     "activeTab",        // 活动标签页权限
-    "scripting"         // 脚本注入权限（用于获取页面内容）
+    "scripting",        // 脚本注入权限（用于获取页面内容）
+    "notifications"     // 通知权限（用于显示操作反馈）
   ],
   
   // 可选权限（用户可以选择性授权）
@@ -66,6 +67,14 @@ const manifest: PlasmoManifest = {
       "https://generativelanguage.googleapis.com/*"
     ]
   },
+  
+  // Web accessible resources（用于访问页面资源）
+  web_accessible_resources: [
+    {
+      resources: ["tabs/*"],
+      matches: ["<all_urls>"]
+    }
+  ],
   
   // 默认语言设置
   default_locale: "zh_CN",

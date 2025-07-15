@@ -60,6 +60,21 @@ if (fs.existsSync(staticDir)) {
   }
 }
 
+// 移动 tabs 目录
+const tabsDir = path.join(rootDir, 'tabs');
+if (fs.existsSync(tabsDir)) {
+  const targetTabsDir = path.join(targetDir, 'tabs');
+  try {
+    // 递归复制目录
+    copyDirectory(tabsDir, targetTabsDir);
+    // 删除原目录
+    removeDirectory(tabsDir);
+    console.log('已移动: tabs/');
+  } catch (err) {
+    console.error('移动 tabs 目录失败:', err.message);
+  }
+}
+
 // 递归复制目录
 function copyDirectory(src, dest) {
   if (!fs.existsSync(dest)) {

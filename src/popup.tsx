@@ -63,23 +63,23 @@ function IndexPopup() {
         });
         
         if (response.success) {
-          // 显示预览结果
-          chrome.windows.create({
-            url: chrome.runtime.getURL('preview.html'),
-            type: 'popup',
-            width: 800,
-            height: 600
+          // 显示预览结果 - 保存到storage供新标签页读取
+          await chrome.storage.local.set({ 
+            previewMode: true,
+            previewResults: response.results 
+          });
+          
+          // 打开新标签页显示预览
+          chrome.tabs.create({
+            url: chrome.runtime.getURL('tabs/preview.html')
           });
         } else {
           alert(`预览失败: ${response.error || '未知错误'}`);
         }
       } else if (mode === 'single') {
-        // 单文件夹模式
-        chrome.windows.create({
-          url: chrome.runtime.getURL('folder-selector.html'),
-          type: 'popup',
-          width: 600,
-          height: 500
+        // 单文件夹模式 - 打开新标签页
+        chrome.tabs.create({
+          url: chrome.runtime.getURL('tabs/folder-selector.html')
         });
       } else {
         // 正常批量整理
