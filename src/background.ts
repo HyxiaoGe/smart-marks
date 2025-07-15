@@ -491,8 +491,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           apiKey,
           linkPreviewKey: apiSettings.linkPreviewKey 
         }, fromFolder);
-        // 添加延迟避免过快调用
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // 添加延迟避免过快调用（增加延迟时间以避免LinkPreview API 429错误）
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
       // 清除进度通知

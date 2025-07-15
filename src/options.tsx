@@ -31,6 +31,8 @@ interface BookmarkFolder {
  * 扩展设置页面
  */
 function OptionsPage() {
+  console.log('OptionsPage 组件已加载');
+  
   const [filterSettings, setFilterSettings] = useState<FilterSettings>({
     excludeFolders: [],
     excludePatterns: [],
@@ -63,6 +65,7 @@ function OptionsPage() {
   
   // 新增状态：控制显示哪个页面
   const [activeView, setActiveView] = useState<'settings' | 'preview' | 'folder-selector'>('settings');
+  console.log('当前视图:', activeView);
   const [previewResults, setPreviewResults] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -832,6 +835,26 @@ ${examples.join('\n')}
         )}
       </div>
 
+      {/* 整理历史和进度 */}
+      <div style={{ 
+        backgroundColor: '#f9f9f9', 
+        padding: '20px', 
+        borderRadius: '8px', 
+        marginBottom: '20px' 
+      }}>
+        <OrganizeHistory />
+      </div>
+      
+      {/* 文件夹管理 */}
+      <div style={{ 
+        backgroundColor: '#f9f9f9', 
+        padding: '20px', 
+        borderRadius: '8px', 
+        marginBottom: '20px' 
+      }}>
+        <FolderManager />
+      </div>
+      
       {/* 保存按钮 */}
       <div style={{ textAlign: 'center', marginTop: '30px' }}>
         <button
@@ -1198,29 +1221,6 @@ function FolderSelectorView({ onBack }: { onBack: () => void }) {
         ))}
       </div>
       
-      {/* 整理历史和进度 */}
-      {activeView === 'settings' && (
-        <div style={{ 
-          backgroundColor: '#f9f9f9', 
-          padding: '20px', 
-          borderRadius: '8px', 
-          marginBottom: '20px' 
-        }}>
-          <OrganizeHistory />
-        </div>
-      )}
-      
-      {/* 文件夹管理 */}
-      {activeView === 'settings' && (
-        <div style={{ 
-          backgroundColor: '#f9f9f9', 
-          padding: '20px', 
-          borderRadius: '8px', 
-          marginBottom: '20px' 
-        }}>
-          <FolderManager />
-        </div>
-      )}
     </div>
   );
 }
