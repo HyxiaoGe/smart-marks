@@ -49,7 +49,9 @@ const manifest: PlasmoManifest = {
   // 主机权限（用于访问网页内容进行分析）
   host_permissions: [
     "https://*/*",      // 所有HTTPS网站
-    "http://localhost/*" // 本地开发服务器
+    "http://localhost/*", // 本地开发服务器
+    "https://api.openai.com/*", // OpenAI API
+    "https://generativelanguage.googleapis.com/*" // Google Gemini API
   ],
   
   // 内容安全策略

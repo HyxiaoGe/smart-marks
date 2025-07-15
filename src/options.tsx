@@ -122,7 +122,11 @@ function OptionsPage() {
 
   // 测试API连接
   const testAPIConnection = async () => {
+    console.log('开始测试API连接，当前设置:', apiSettings);
+    
     if (!apiSettings.apiKey || !apiSettings.provider) {
+      console.log('API密钥或提供商未设置');
+      alert('请先选择AI服务提供商并输入API密钥');
       return;
     }
 
@@ -130,6 +134,8 @@ function OptionsPage() {
     setApiTestResult(null);
 
     try {
+      console.log('发送测试请求到background script...');
+      
       // 发送消息给background script测试API
       const response = await chrome.runtime.sendMessage({
         type: 'TEST_API',
@@ -140,7 +146,9 @@ function OptionsPage() {
         }
       });
 
-      if (response.success) {
+      console.log('收到响应:', response);
+
+      if (response && response.success) {
         setApiTestResult({
           success: true,
           message: 'API连接成功！可以正常使用AI分类功能。'
@@ -148,7 +156,7 @@ function OptionsPage() {
       } else {
         setApiTestResult({
           success: false,
-          message: response.error || 'API连接失败，请检查密钥是否正确。'
+          message: response?.error || 'API连接失败，请检查密钥是否正确。'
         });
       }
     } catch (error) {
