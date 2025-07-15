@@ -9,7 +9,8 @@ interface FilterSettings {
 
 interface APISettings {
   provider: 'openai' | 'gemini' | '';
-  apiKey: string;
+  openaiKey?: string;
+  geminiKey?: string;
   model: string;
   autoClassify: boolean;
 }
@@ -42,7 +43,8 @@ function OptionsPage() {
   
   const [apiSettings, setApiSettings] = useState<APISettings>({
     provider: '',
-    apiKey: '',
+    openaiKey: '',
+    geminiKey: '',
     model: '',
     autoClassify: true
   });
@@ -52,6 +54,8 @@ function OptionsPage() {
     success: boolean;
     message: string;
   } | null>(null);
+  
+  const [showApiKey, setShowApiKey] = useState(false);
 
   // 加载设置和书签文件夹
   useEffect(() => {
@@ -92,12 +96,12 @@ function OptionsPage() {
   // 保存按钮时清除测试结果
   useEffect(() => {
     setApiTestResult(null);
-  }, [apiSettings.apiKey, apiSettings.provider]);
+  }, [apiSettings.openaiKey, apiSettings.geminiKey, apiSettings.provider]);
   
   // 自动保存API设置（使用防抖）
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (apiSettings.provider || apiSettings.apiKey) {
+      if (apiSettings.provider || apiSettings.openaiKey || apiSettings.geminiKey) {
         console.log('自动保存API设置...');
         chrome.storage.sync.set({ apiSettings }).then(() => {
           console.log('API设置已自动保存');
@@ -142,7 +146,9 @@ function OptionsPage() {
   const testAPIConnection = async () => {
     console.log('开始测试API连接，当前设置:', apiSettings);
     
-    if (!apiSettings.apiKey || !apiSettings.provider) {
+    const currentKey = apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey;
+    
+    if (!currentKey || !apiSettings.provider) {
       console.log('API密钥或提供商未设置');
       alert('请先选择AI服务提供商并输入API密钥');
       return;
@@ -159,7 +165,7 @@ function OptionsPage() {
         type: 'TEST_API',
         apiSettings: {
           provider: apiSettings.provider,
-          apiKey: apiSettings.apiKey,
+          apiKey: currentKey,
           model: apiSettings.model
         }
       });
@@ -444,13 +450,28 @@ ${examples.join('\n')}
                 <div style={{ marginBottom: '15px' }}>
                   <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
                     API密钥
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      style={{
+                        marginLeft: '10px',
+                        padding: '2px 8px',
+                        fontSize: '12px',
+                        backgroundColor: '#e0e0e0',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {showApiKey ? '隐藏' : '显示'}
+                    </button>
                   </label>
                   <input
-                    type="password"
-                    value={apiSettings.apiKey}
+                    type={showApiKey ? "text" : "password"}
+                    value={apiSettings.provider === 'openai' ? (apiSettings.openaiKey || '') : (apiSettings.geminiKey || '')}
                     onChange={(e) => setApiSettings(prev => ({ 
                       ...prev, 
-                      apiKey: e.target.value 
+                      [apiSettings.provider === 'openai' ? 'openaiKey' : 'geminiKey']: e.target.value 
                     }))}
                     placeholder={`请输入${apiSettings.provider === 'openai' ? 'OpenAI' : 'Google'} API密钥`}
                     style={{
@@ -467,9 +488,10 @@ ${examples.join('\n')}
                     ) : (
                       <span>获取API密钥：<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a></span>
                     )}
-                    {apiSettings.apiKey && (
+                    {((apiSettings.provider === 'openai' && apiSettings.openaiKey) || 
+                      (apiSettings.provider === 'gemini' && apiSettings.geminiKey)) && (
                       <span style={{ marginLeft: '10px', color: '#4CAF50' }}>
-                        （已输入 {apiSettings.apiKey.length} 个字符）
+                        （已输入 {apiSettings.provider === 'openai' ? apiSettings.openaiKey!.length : apiSettings.geminiKey!.length} 个字符）
                       </span>
                     )}
                   </div>
@@ -512,15 +534,15 @@ ${examples.join('\n')}
                 <div style={{ marginBottom: '15px' }}>
                   <button
                     onClick={testAPIConnection}
-                    disabled={!apiSettings.apiKey || testingAPI}
+                    disabled={!(apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey) || testingAPI}
                     style={{
                       padding: '8px 16px',
                       backgroundColor: testingAPI ? '#ccc' : '#4CAF50',
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: testingAPI || !apiSettings.apiKey ? 'not-allowed' : 'pointer',
-                      opacity: !apiSettings.apiKey ? 0.6 : 1
+                      cursor: testingAPI || !(apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey) ? 'not-allowed' : 'pointer',
+                      opacity: !(apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey) ? 0.6 : 1
                     }}
                   >
                     {testingAPI ? '测试中...' : '测试API连接'}

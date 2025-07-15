@@ -28,7 +28,9 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   const settings = await chrome.storage.sync.get(['apiSettings', 'filterSettings']);
   const apiSettings = settings.apiSettings;
   
-  if (!apiSettings?.autoClassify || !apiSettings?.apiKey) {
+  const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+  
+  if (!apiSettings?.autoClassify || !apiKey) {
     console.log('AI自动分类未启用或未配置API');
     return;
   }
@@ -59,7 +61,7 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     }
     
     // 如果不需要过滤，则进行AI分类
-    await classifyBookmark(bookmark, metadata, apiSettings);
+    await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
   } else {
     console.log(`书签 "${bookmark.title}" 被过滤，不进行AI处理`);
   }
@@ -74,7 +76,9 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
     const settings = await chrome.storage.sync.get(['apiSettings']);
     const apiSettings = settings.apiSettings;
     
-    if (!apiSettings?.autoClassify || !apiSettings?.apiKey) {
+    const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+    
+    if (!apiSettings?.autoClassify || !apiKey) {
       return;
     }
     
@@ -82,7 +86,7 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
     if (bookmark.length > 0 && bookmark[0].url) {
       // 尝试获取页面元数据
       const metadata = pageMetadataCache.get(bookmark[0].url);
-      await classifyBookmark(bookmark[0], metadata, apiSettings);
+      await classifyBookmark(bookmark[0], metadata, { ...apiSettings, apiKey });
     }
   }
 });
@@ -319,7 +323,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const settings = await chrome.storage.sync.get(['apiSettings']);
       const apiSettings = settings.apiSettings;
       
-      if (!apiSettings?.apiKey) {
+      const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+      
+      if (!apiKey) {
         sendResponse({ success: false, error: '请先配置API密钥' });
         return;
       }
@@ -327,7 +333,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // 批量分类
       for (const bookmark of bookmarksToOrganize) {
         const metadata = pageMetadataCache.get(bookmark.url || '');
-        await classifyBookmark(bookmark, metadata, apiSettings);
+        await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
         // 添加延迟避免过快调用
         await new Promise(resolve => setTimeout(resolve, 100));
       }
