@@ -10,6 +10,12 @@ export async function showNotification(
   message: string, 
   type: 'success' | 'error' | 'info' = 'info'
 ) {
+  // 检查是否有通知权限
+  if (!chrome.notifications) {
+    console.log(`[${type.toUpperCase()}] ${title}: ${message}`);
+    return;
+  }
+  
   const iconUrl = type === 'success' ? '/assets/success-icon.png' : 
                   type === 'error' ? '/assets/error-icon.png' : 
                   '/assets/info-icon.png';
@@ -43,6 +49,12 @@ export async function showProgressNotification(
     ? `正在处理: ${category} (${current}/${total})`
     : `处理进度: ${current}/${total} (${progress}%)`;
     
+  // 检查是否有通知权限
+  if (!chrome.notifications) {
+    console.log(`整理进度: ${message}`);
+    return;
+  }
+    
   try {
     await chrome.notifications.create('progress', {
       type: 'progress',
@@ -61,6 +73,11 @@ export async function showProgressNotification(
  * 清除进度通知
  */
 export async function clearProgressNotification() {
+  // 检查是否有通知权限
+  if (!chrome.notifications) {
+    return;
+  }
+  
   try {
     await chrome.notifications.clear('progress');
   } catch (error) {

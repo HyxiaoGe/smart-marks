@@ -60,35 +60,21 @@ if (fs.existsSync(staticDir)) {
   }
 }
 
-// 检查并移动额外的页面文件
-const extraPages = ['preview', 'folder-selector'];
-extraPages.forEach(pageName => {
-  const htmlFile = `${pageName}.html`;
-  const jsPattern = new RegExp(`${pageName}\\.[a-f0-9]+\\.js$`);
-  
-  // 查找并移动HTML文件
-  const htmlPath = path.join(rootDir, htmlFile);
-  if (fs.existsSync(htmlPath)) {
-    const targetHtmlPath = path.join(targetDir, htmlFile);
+// 复制静态HTML页面
+const srcDir = path.join(__dirname, '..', 'src');
+const staticPages = ['static-preview.html', 'static-folder-selector.html'];
+
+staticPages.forEach(fileName => {
+  const srcPath = path.join(srcDir, fileName);
+  if (fs.existsSync(srcPath)) {
+    // 去掉 'static-' 前缀
+    const targetFileName = fileName.replace('static-', '');
+    const targetPath = path.join(targetDir, targetFileName);
     try {
-      fs.renameSync(htmlPath, targetHtmlPath);
-      console.log(`已移动: ${htmlFile}`);
+      fs.copyFileSync(srcPath, targetPath);
+      console.log(`已复制: ${fileName} -> ${targetFileName}`);
     } catch (err) {
-      console.error(`移动 ${htmlFile} 失败:`, err.message);
-    }
-  }
-  
-  // 查找并移动对应的JS文件
-  const rootFiles = fs.readdirSync(rootDir);
-  const jsFile = rootFiles.find(file => jsPattern.test(file));
-  if (jsFile) {
-    const jsPath = path.join(rootDir, jsFile);
-    const targetJsPath = path.join(targetDir, jsFile);
-    try {
-      fs.renameSync(jsPath, targetJsPath);
-      console.log(`已移动: ${jsFile}`);
-    } catch (err) {
-      console.error(`移动 ${jsFile} 失败:`, err.message);
+      console.error(`复制 ${fileName} 失败:`, err.message);
     }
   }
 });

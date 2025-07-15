@@ -41,6 +41,49 @@ function IndexPopup() {
   // 处理智能整理按钮点击
   const handleSmartOrganize = async (mode: string = 'normal') => {
     setLoading(true);
+    
+    // 显示处理中提示
+    const loadingDiv = document.createElement('div');
+    loadingDiv.id = 'processing-overlay';
+    loadingDiv.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    `;
+    loadingDiv.innerHTML = `
+      <div style="
+        background: white;
+        padding: 20px 30px;
+        border-radius: 8px;
+        text-align: center;
+      ">
+        <div style="
+          width: 40px;
+          height: 40px;
+          border: 3px solid #f3f3f3;
+          border-top: 3px solid #3498db;
+          border-radius: 50%;
+          margin: 0 auto 10px;
+          animation: spin 1s linear infinite;
+        "></div>
+        <style>
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+        <p style="margin: 0; color: #333;">正在处理中...</p>
+      </div>
+    `;
+    document.body.appendChild(loadingDiv);
+    
     try {
       // 检查是否配置了API
       const settings = await chrome.storage.sync.get(['apiSettings']);
@@ -49,6 +92,13 @@ function IndexPopup() {
         : settings.apiSettings?.geminiKey;
         
       if (!apiKey) {
+        // 移除加载提示
+        const overlay = document.getElementById('processing-overlay');
+        if (overlay) {
+          overlay.remove();
+        }
+        setLoading(false);
+        
         if (confirm('还未配置AI服务，是否前往设置页面？')) {
           chrome.runtime.openOptionsPage();
         }
@@ -108,6 +158,11 @@ function IndexPopup() {
       alert('整理失败，请重试');
     } finally {
       setLoading(false);
+      // 移除加载提示
+      const overlay = document.getElementById('processing-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
     }
   };
 
