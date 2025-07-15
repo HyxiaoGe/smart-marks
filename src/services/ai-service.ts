@@ -5,6 +5,7 @@
 import { getDomainPattern } from './domain-patterns';
 import { classificationCache } from './classification-cache';
 import { linkPreviewService } from './linkpreview-service';
+import { normalizeFolder, STANDARD_FOLDERS } from './folder-normalizer';
 
 interface BookmarkInfo {
   title: string;
@@ -28,15 +29,19 @@ async function classifyWithOpenAI(
   apiKey: string,
   model: string
 ): Promise<ClassificationResult> {
+  // 标准化现有文件夹名称
+  const normalizedExisting = existingFolders.map(f => normalizeFolder(f));
+  const uniqueFolders = [...new Set([...normalizedExisting, ...STANDARD_FOLDERS])].sort();
+  
   const systemPrompt = `你是一个智能书签分类助手。你的任务是根据书签的标题、URL和描述，将其分类到最合适的文件夹中。
 
-现有的文件夹列表：
-${existingFolders.map(f => `- ${f}`).join('\n')}
+推荐的标准文件夹列表：
+${uniqueFolders.map(f => `- ${f}`).join('\n')}
 
 分类规则：
-1. 优先选择现有文件夹
-2. 如果现有文件夹都不合适，可以建议一个新的文件夹名称
-3. 文件夹名称应该简洁明了，使用中文
+1. 必须选择上述列表中的文件夹
+2. 优先选择最匹配的标准文件夹
+3. 文件夹名称必须与列表中的完全一致
 4. 考虑书签的主要用途和内容类型
 
 请以JSON格式返回分类结果，格式如下：
@@ -80,8 +85,11 @@ ${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', '
     const data = await response.json();
     const result = JSON.parse(data.choices[0].message.content);
     
+    // 标准化返回的分类名称
+    const normalizedCategory = normalizeFolder(result.category || '未分类');
+    
     return {
-      category: result.category || '未分类',
+      category: normalizedCategory,
       confidence: result.confidence || 0.5,
       reasoning: result.reasoning
     };
@@ -100,10 +108,14 @@ async function classifyWithGemini(
   apiKey: string,
   model: string
 ): Promise<ClassificationResult> {
+  // 标准化现有文件夹名称
+  const normalizedExisting = existingFolders.map(f => normalizeFolder(f));
+  const uniqueFolders = [...new Set([...normalizedExisting, ...STANDARD_FOLDERS])].sort();
+  
   const prompt = `作为一个智能书签分类助手，请根据以下书签信息进行分类。
 
-现有文件夹：
-${existingFolders.map(f => `- ${f}`).join('\n')}
+推荐的标准文件夹：
+${uniqueFolders.map(f => `- ${f}`).join('\n')}
 
 书签信息：
 - 标题：${bookmarkInfo.title}
@@ -111,7 +123,7 @@ ${existingFolders.map(f => `- ${f}`).join('\n')}
 ${bookmarkInfo.description ? `- 描述：${bookmarkInfo.description}` : ''}
 ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(', ')}` : ''}
 
-请优先选择现有文件夹，如果都不合适，可以建议新的文件夹名称。
+请从上述标准文件夹列表中选择最合适的一个。
 返回JSON格式：{"category": "文件夹名称", "confidence": 0.8, "reasoning": "分类理由"}`;
 
   try {
@@ -153,8 +165,11 @@ ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(',
     
     const result = JSON.parse(jsonMatch[0]);
     
+    // 标准化返回的分类名称
+    const normalizedCategory = normalizeFolder(result.category || '未分类');
+    
     return {
-      category: result.category || '未分类',
+      category: normalizedCategory,
       confidence: result.confidence || 0.5,
       reasoning: result.reasoning
     };

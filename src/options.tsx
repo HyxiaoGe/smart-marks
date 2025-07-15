@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { FolderManager } from './components/FolderManager';
 
 interface FilterSettings {
   excludeFolders: string[];
@@ -1177,6 +1178,18 @@ function FolderSelectorView({ onBack }: { onBack: () => void }) {
           </div>
         ))}
       </div>
+      
+      {/* 文件夹管理 */}
+      {activeView === 'settings' && (
+        <div style={{ 
+          backgroundColor: '#f9f9f9', 
+          padding: '20px', 
+          borderRadius: '8px', 
+          marginBottom: '20px' 
+        }}>
+          <FolderManager />
+        </div>
+      )}
     </div>
   );
 }
