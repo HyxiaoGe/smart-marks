@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "plasmo dev",
     "build": "plasmo build && npm run move-build",
-    "move-build": "mkdir -p build/chrome-mv3-prod && mv *.js *.html *.png manifest.json build/chrome-mv3-prod/ 2>/dev/null || true && mv static build/chrome-mv3-prod/ 2>/dev/null || true",
+    "move-build": "node scripts/move-build.js",
     "package": "plasmo package",
     "lint": "eslint src",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf build .plasmo"
+    "clean": "node scripts/clean.js"
   },
   "keywords": ["chrome-extension", "bookmarks", "ai", "smart-organization"],
   "author": "heyanxiao",
