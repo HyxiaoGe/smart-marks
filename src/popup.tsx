@@ -143,6 +143,21 @@ function IndexPopup() {
       
       if (response.success) {
         // 成功消息已经通过进度状态显示
+        // 设置标记，让设置页面知道要滚动到整理历史
+        await chrome.storage.local.set({ justStartedOrganizing: true });
+        
+        // 显示跳转提示
+        setOrganizingProgress(prev => ({
+          ...prev,
+          currentBookmark: '正在跳转到设置页面查看进度...'
+        }));
+        
+        // 自动跳转到设置页面查看进度
+        setTimeout(() => {
+          chrome.runtime.openOptionsPage();
+          // 关闭popup窗口
+          window.close();
+        }, 1000);
       } else {
         alert(`整理失败: ${response.error || '未知错误'}`);
       }

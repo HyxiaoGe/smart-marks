@@ -84,6 +84,24 @@ function OptionsPage() {
         chrome.storage.local.remove(['folderSelectorMode']);
       }
     });
+    
+    // 检查是否刚刚开始整理
+    chrome.storage.local.get('justStartedOrganizing', (data) => {
+      if (data.justStartedOrganizing) {
+        // 滚动到整理历史部分
+        setTimeout(() => {
+          const historySection = document.querySelector('h3')
+          if (historySection) {
+            const historySectionParent = historySection.closest('div[style*="background-color"]');
+            if (historySectionParent && historySectionParent.textContent?.includes('整理进度')) {
+              historySectionParent.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }
+        }, 500);
+        // 清除标记
+        chrome.storage.local.remove('justStartedOrganizing');
+      }
+    });
   }, []);
 
   // 加载保存的设置
