@@ -2,6 +2,10 @@
  * AI服务模块 - 处理与AI API的交互
  */
 
+import { getDomainPattern } from './domain-patterns';
+import { classificationCache } from './classification-cache';
+import { linkPreviewService } from './linkpreview-service';
+
 interface BookmarkInfo {
   title: string;
   url: string;
@@ -186,7 +190,7 @@ export async function getExistingFolders(): Promise<string[]> {
 }
 
 /**
- * 使用AI对书签进行分类
+ * 使用AI对书签进行分类（带智能优化）
  */
 export async function classifyBookmark(
   bookmarkInfo: BookmarkInfo,
@@ -194,17 +198,79 @@ export async function classifyBookmark(
     provider: 'openai' | 'gemini';
     apiKey: string;
     model: string;
+    linkPreviewKey?: string;
   }
 ): Promise<ClassificationResult> {
-  // 获取现有文件夹列表
+  console.log('开始智能分类:', bookmarkInfo.url);
+  
+  // 1. 检查本地域名字典
+  const domainPattern = getDomainPattern(bookmarkInfo.url);
+  if (domainPattern) {
+    console.log('使用域名字典分类:', domainPattern.category);
+    
+    // 缓存字典结果
+    await classificationCache.setCachedClassification(
+      bookmarkInfo.url,
+      domainPattern.category,
+      domainPattern.confidence || 0.95,
+      'dictionary'
+    );
+    
+    return {
+      category: domainPattern.category,
+      confidence: domainPattern.confidence || 0.95,
+      reasoning: `基于域名模式识别（${new URL(bookmarkInfo.url).hostname}）`
+    };
+  }
+  
+  // 2. 检查域名分类缓存
+  const cachedClassification = classificationCache.getCachedClassification(bookmarkInfo.url);
+  if (cachedClassification) {
+    console.log('使用缓存分类:', cachedClassification.category);
+    return {
+      category: cachedClassification.category,
+      confidence: cachedClassification.confidence,
+      reasoning: '基于同域名历史分类'
+    };
+  }
+  
+  // 3. 尝试使用 LinkPreview API 获取元数据（如果配置了）
+  if (apiSettings.linkPreviewKey && !bookmarkInfo.description) {
+    linkPreviewService.setApiKey(apiSettings.linkPreviewKey);
+    
+    if (linkPreviewService.hasQuota()) {
+      const preview = await linkPreviewService.fetchPreview(bookmarkInfo.url);
+      if (preview) {
+        console.log('使用LinkPreview获取的元数据:', preview.description);
+        bookmarkInfo.description = preview.description;
+        bookmarkInfo.title = preview.title || bookmarkInfo.title;
+      }
+    } else {
+      const quotaInfo = linkPreviewService.getQuotaInfo();
+      console.log(`LinkPreview配额已用完，${quotaInfo.resetIn}分钟后重置`);
+    }
+  }
+  
+  // 4. 使用 AI 进行分类
+  console.log('使用AI进行分类');
   const existingFolders = await getExistingFolders();
   
-  // 根据提供商调用相应的API
+  let result: ClassificationResult;
   if (apiSettings.provider === 'openai') {
-    return classifyWithOpenAI(bookmarkInfo, existingFolders, apiSettings.apiKey, apiSettings.model);
+    result = await classifyWithOpenAI(bookmarkInfo, existingFolders, apiSettings.apiKey, apiSettings.model);
   } else if (apiSettings.provider === 'gemini') {
-    return classifyWithGemini(bookmarkInfo, existingFolders, apiSettings.apiKey, apiSettings.model);
+    result = await classifyWithGemini(bookmarkInfo, existingFolders, apiSettings.apiKey, apiSettings.model);
   } else {
     throw new Error('不支持的AI提供商');
   }
+  
+  // 5. 缓存AI分类结果
+  await classificationCache.setCachedClassification(
+    bookmarkInfo.url,
+    result.category,
+    result.confidence,
+    'ai'
+  );
+  
+  return result;
 }

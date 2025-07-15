@@ -94,7 +94,11 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     }
     
     // 如果不需要过滤，则进行AI分类
-    await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
+    await classifyBookmark(bookmark, metadata, { 
+      ...apiSettings, 
+      apiKey,
+      linkPreviewKey: apiSettings.linkPreviewKey 
+    });
   } else {
     console.log(`书签 "${bookmark.title}" 被过滤，不进行AI处理`);
   }
@@ -119,7 +123,11 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
     if (bookmark.length > 0 && bookmark[0].url) {
       // 尝试获取页面元数据
       const metadata = pageMetadataCache.get(bookmark[0].url);
-      await classifyBookmark(bookmark[0], metadata, { ...apiSettings, apiKey });
+      await classifyBookmark(bookmark[0], metadata, { 
+        ...apiSettings, 
+        apiKey,
+        linkPreviewKey: apiSettings.linkPreviewKey 
+      });
     }
   }
 });
@@ -447,8 +455,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // 忽略错误（popup可能已关闭）
         });
         
+        // 批量整理时不获取元数据，直接使用缓存或空值
         const metadata = pageMetadataCache.get(bookmark.url || '');
-        await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
+        await classifyBookmark(bookmark, metadata, { 
+          ...apiSettings, 
+          apiKey,
+          linkPreviewKey: apiSettings.linkPreviewKey 
+        });
         // 添加延迟避免过快调用
         await new Promise(resolve => setTimeout(resolve, 100));
       }
@@ -519,7 +532,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // 批量分类
         for (const bookmark of bookmarksToOrganize) {
           const metadata = pageMetadataCache.get(bookmark.url || '');
-          await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
+          await classifyBookmark(bookmark, metadata, { 
+            ...apiSettings, 
+            apiKey,
+            linkPreviewKey: apiSettings.linkPreviewKey 
+          });
           // 添加延迟避免过快调用
           await new Promise(resolve => setTimeout(resolve, 100));
         }
@@ -593,7 +610,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const result = await aiClassifyBookmark(bookmarkInfo, { 
               provider: apiSettings.provider,
               apiKey: apiKey,
-              model: apiSettings.model 
+              model: apiSettings.model,
+              linkPreviewKey: apiSettings.linkPreviewKey 
             });
             previewResults.push({
               bookmark: {

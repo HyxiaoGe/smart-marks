@@ -11,6 +11,7 @@ interface APISettings {
   provider: 'openai' | 'gemini' | '';
   openaiKey?: string;
   geminiKey?: string;
+  linkPreviewKey?: string;
   model: string;
   autoClassify: boolean;
 }
@@ -45,6 +46,7 @@ function OptionsPage() {
     provider: '',
     openaiKey: '',
     geminiKey: '',
+    linkPreviewKey: '',
     model: '',
     autoClassify: true
   });
@@ -567,6 +569,33 @@ ${examples.join('\n')}
                       </>
                     )}
                   </select>
+                </div>
+
+                {/* LinkPreview API配置 */}
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
+                    LinkPreview API密钥（可选）
+                  </label>
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={apiSettings.linkPreviewKey || ''}
+                    onChange={(e) => setApiSettings(prev => ({ 
+                      ...prev, 
+                      linkPreviewKey: e.target.value 
+                    }))}
+                    placeholder="输入LinkPreview API密钥以获取更准确的页面信息"
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      fontSize: '14px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px'
+                    }}
+                  />
+                  <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
+                    <span>获取API密钥：<a href="https://my.linkpreview.net" target="_blank" rel="noopener noreferrer">LinkPreview</a></span>
+                    <span style={{ marginLeft: '10px' }}>（免费计划：60次/小时）</span>
+                  </div>
                 </div>
 
                 {/* 测试API连接按钮 */}
