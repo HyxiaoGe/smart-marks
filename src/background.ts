@@ -557,7 +557,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               keywords: metadata?.keywords
             };
             
-            const result = await aiClassifyBookmark(bookmarkInfo, apiSettings);
+            const result = await aiClassifyBookmark(bookmarkInfo, { 
+              provider: apiSettings.provider,
+              apiKey: apiKey,
+              model: apiSettings.model 
+            });
             previewResults.push({
               bookmark: {
                 id: bookmark.id,

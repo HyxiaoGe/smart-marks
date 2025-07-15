@@ -68,7 +68,9 @@ ${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', '
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API错误: ${response.statusText}`);
+      const errorData = await response.json();
+      console.error('OpenAI API错误响应:', errorData);
+      throw new Error(`OpenAI API错误: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
@@ -131,7 +133,9 @@ ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(',
     );
 
     if (!response.ok) {
-      throw new Error(`Gemini API错误: ${response.statusText}`);
+      const errorData = await response.json();
+      console.error('Gemini API错误响应:', errorData);
+      throw new Error(`Gemini API错误: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();

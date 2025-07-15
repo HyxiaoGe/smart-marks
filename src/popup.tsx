@@ -71,7 +71,7 @@ function IndexPopup() {
           
           // 打开新标签页显示预览
           chrome.tabs.create({
-            url: chrome.runtime.getURL('tabs/preview.html')
+            url: chrome.runtime.getURL('preview.html')
           });
         } else {
           alert(`预览失败: ${response.error || '未知错误'}`);
@@ -79,7 +79,7 @@ function IndexPopup() {
       } else if (mode === 'single') {
         // 单文件夹模式 - 打开新标签页
         chrome.tabs.create({
-          url: chrome.runtime.getURL('tabs/folder-selector.html')
+          url: chrome.runtime.getURL('folder-selector.html')
         });
       } else {
         // 正常批量整理

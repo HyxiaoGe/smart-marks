@@ -60,20 +60,39 @@ if (fs.existsSync(staticDir)) {
   }
 }
 
-// 移动 tabs 目录
-const tabsDir = path.join(rootDir, 'tabs');
-if (fs.existsSync(tabsDir)) {
-  const targetTabsDir = path.join(targetDir, 'tabs');
-  try {
-    // 递归复制目录
-    copyDirectory(tabsDir, targetTabsDir);
-    // 删除原目录
-    removeDirectory(tabsDir);
-    console.log('已移动: tabs/');
-  } catch (err) {
-    console.error('移动 tabs 目录失败:', err.message);
+// 检查并移动额外的页面文件
+const extraPages = ['preview', 'folder-selector'];
+extraPages.forEach(pageName => {
+  const htmlFile = `${pageName}.html`;
+  const jsPattern = new RegExp(`${pageName}\\.[a-f0-9]+\\.js$`);
+  
+  // 查找并移动HTML文件
+  const htmlPath = path.join(rootDir, htmlFile);
+  if (fs.existsSync(htmlPath)) {
+    const targetHtmlPath = path.join(targetDir, htmlFile);
+    try {
+      fs.renameSync(htmlPath, targetHtmlPath);
+      console.log(`已移动: ${htmlFile}`);
+    } catch (err) {
+      console.error(`移动 ${htmlFile} 失败:`, err.message);
+    }
   }
-}
+  
+  // 查找并移动对应的JS文件
+  const rootFiles = fs.readdirSync(rootDir);
+  const jsFile = rootFiles.find(file => jsPattern.test(file));
+  if (jsFile) {
+    const jsPath = path.join(rootDir, jsFile);
+    const targetJsPath = path.join(targetDir, jsFile);
+    try {
+      fs.renameSync(jsPath, targetJsPath);
+      console.log(`已移动: ${jsFile}`);
+    } catch (err) {
+      console.error(`移动 ${jsFile} 失败:`, err.message);
+    }
+  }
+});
+
 
 // 递归复制目录
 function copyDirectory(src, dest) {
