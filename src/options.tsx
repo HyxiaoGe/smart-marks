@@ -63,6 +63,8 @@ function OptionsPage() {
   const loadSettings = async () => {
     try {
       const result = await chrome.storage.sync.get(['filterSettings', 'apiSettings']);
+      console.log('加载的设置:', result);
+      
       if (result.filterSettings) {
         setFilterSettings(result.filterSettings);
       }
@@ -91,6 +93,22 @@ function OptionsPage() {
   useEffect(() => {
     setApiTestResult(null);
   }, [apiSettings.apiKey, apiSettings.provider]);
+  
+  // 自动保存API设置（使用防抖）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (apiSettings.provider || apiSettings.apiKey) {
+        console.log('自动保存API设置...');
+        chrome.storage.sync.set({ apiSettings }).then(() => {
+          console.log('API设置已自动保存');
+        }).catch(error => {
+          console.error('自动保存失败:', error);
+        });
+      }
+    }, 1000); // 1秒后自动保存
+    
+    return () => clearTimeout(timer);
+  }, [apiSettings]);
 
   // 从书签树中提取文件夹
   const extractFolders = (nodes: chrome.bookmarks.BookmarkTreeNode[], parentPath = '', level = 0): BookmarkFolder[] => {
@@ -176,6 +194,8 @@ function OptionsPage() {
     setSyncStatus('syncing');
     
     try {
+      console.log('保存设置:', { filterSettings, apiSettings });
+      
       await chrome.storage.sync.set({ 
         filterSettings,
         apiSettings 
@@ -446,6 +466,11 @@ ${examples.join('\n')}
                       <span>获取API密钥：<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI控制台</a></span>
                     ) : (
                       <span>获取API密钥：<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a></span>
+                    )}
+                    {apiSettings.apiKey && (
+                      <span style={{ marginLeft: '10px', color: '#4CAF50' }}>
+                        （已输入 {apiSettings.apiKey.length} 个字符）
+                      </span>
                     )}
                   </div>
                 </div>

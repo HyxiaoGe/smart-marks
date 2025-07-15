@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>测试API连接</title>
+</head>
+<body>
+    <h1>API连接测试页面</h1>
+    <button id="testBtn">测试Chrome消息传递</button>
+    <div id="result"></div>
+    
+    <script>
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            console.log('开始测试...');
+            document.getElementById('result').innerText = '测试中...';
+            
+            try {
+                const response = await chrome.runtime.sendMessage({
+                    type: 'TEST_API',
+                    apiSettings: {
+                        provider: 'openai',
+                        apiKey: 'test-key',
+                        model: 'gpt-4o-mini'
+                    }
+                });
+                
+                console.log('收到响应:', response);
+                document.getElementById('result').innerText = JSON.stringify(response, null, 2);
+            } catch (error) {
+                console.error('测试失败:', error);
+                document.getElementById('result').innerText = '错误: ' + error.message;
+            }
+        });
+        
+        // 测试chrome.runtime是否可用
+        console.log('chrome.runtime可用:', !!chrome.runtime);
+        console.log('chrome.runtime.sendMessage可用:', !!chrome.runtime.sendMessage);
+    </script>
+</body>
+</html>
