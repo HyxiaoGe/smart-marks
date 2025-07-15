@@ -437,6 +437,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // 显示进度
         await showProgressNotification(i + 1, bookmarksToOrganize.length, bookmark.title);
         
+        // 发送进度消息到popup
+        chrome.runtime.sendMessage({
+          type: 'ORGANIZE_PROGRESS',
+          current: i + 1,
+          total: bookmarksToOrganize.length,
+          bookmarkTitle: bookmark.title
+        }).catch(() => {
+          // 忽略错误（popup可能已关闭）
+        });
+        
         const metadata = pageMetadataCache.get(bookmark.url || '');
         await classifyBookmark(bookmark, metadata, { ...apiSettings, apiKey });
         // 添加延迟避免过快调用
@@ -453,9 +463,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         'success'
       );
       
+      // 发送完成消息到popup
+      chrome.runtime.sendMessage({
+        type: 'ORGANIZE_COMPLETE',
+        total: bookmarksToOrganize.length
+      }).catch(() => {
+        // 忽略错误
+      });
+      
       sendResponse({ success: true, processed: bookmarksToOrganize.length });
       } catch (error) {
         console.error('批量整理失败:', error);
+        
+        // 发送错误消息到popup
+        chrome.runtime.sendMessage({
+          type: 'ORGANIZE_ERROR',
+          error: error instanceof Error ? error.message : '未知错误'
+        }).catch(() => {
+          // 忽略错误（popup可能已关闭）
+        });
+        
+        await showNotification(
+          '整理失败',
+          `批量整理出错: ${error instanceof Error ? error.message : '未知错误'}`,
+          'error'
+        );
+        
         sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
       }
     })();

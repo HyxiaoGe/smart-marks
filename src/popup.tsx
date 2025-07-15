@@ -7,7 +7,17 @@ import React, { useState, useEffect } from 'react';
 function IndexPopup() {
   const [bookmarkCount, setBookmarkCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState<boolean>(false);
+  const [organizingProgress, setOrganizingProgress] = useState<{
+    current: number;
+    total: number;
+    currentBookmark: string;
+    status: 'idle' | 'processing' | 'completed' | 'error';
+  }>({
+    current: 0,
+    total: 0,
+    currentBookmark: '',
+    status: 'idle'
+  });
 
   // 获取书签数量
   useEffect(() => {
@@ -38,51 +48,53 @@ function IndexPopup() {
     fetchBookmarkCount();
   }, []);
 
+  // 监听进度更新
+  useEffect(() => {
+    const handleMessage = (message: any) => {
+      if (message.type === 'ORGANIZE_PROGRESS') {
+        setOrganizingProgress({
+          current: message.current,
+          total: message.total,
+          currentBookmark: message.bookmarkTitle || '',
+          status: 'processing'
+        });
+      } else if (message.type === 'ORGANIZE_COMPLETE') {
+        setOrganizingProgress(prev => ({
+          ...prev,
+          status: 'completed'
+        }));
+        // 3秒后重置状态
+        setTimeout(() => {
+          setOrganizingProgress({
+            current: 0,
+            total: 0,
+            currentBookmark: '',
+            status: 'idle'
+          });
+        }, 3000);
+      } else if (message.type === 'ORGANIZE_ERROR') {
+        setOrganizingProgress(prev => ({
+          ...prev,
+          status: 'error'
+        }));
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
+  }, []);
+
   // 处理智能整理按钮点击
-  const handleSmartOrganize = async (mode: string = 'normal') => {
+  const handleSmartOrganize = async () => {
     setLoading(true);
-    
-    // 显示处理中提示
-    const loadingDiv = document.createElement('div');
-    loadingDiv.id = 'processing-overlay';
-    loadingDiv.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    `;
-    loadingDiv.innerHTML = `
-      <div style="
-        background: white;
-        padding: 20px 30px;
-        border-radius: 8px;
-        text-align: center;
-      ">
-        <div style="
-          width: 40px;
-          height: 40px;
-          border: 3px solid #f3f3f3;
-          border-top: 3px solid #3498db;
-          border-radius: 50%;
-          margin: 0 auto 10px;
-          animation: spin 1s linear infinite;
-        "></div>
-        <style>
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        </style>
-        <p style="margin: 0; color: #333;">正在处理中...</p>
-      </div>
-    `;
-    document.body.appendChild(loadingDiv);
+    setOrganizingProgress({
+      current: 0,
+      total: 0,
+      currentBookmark: '',
+      status: 'processing'
+    });
     
     try {
       // 检查是否配置了API
@@ -92,12 +104,13 @@ function IndexPopup() {
         : settings.apiSettings?.geminiKey;
         
       if (!apiKey) {
-        // 移除加载提示
-        const overlay = document.getElementById('processing-overlay');
-        if (overlay) {
-          overlay.remove();
-        }
         setLoading(false);
+        setOrganizingProgress({
+          current: 0,
+          total: 0,
+          currentBookmark: '',
+          status: 'idle'
+        });
         
         if (confirm('还未配置AI服务，是否前往设置页面？')) {
           chrome.runtime.openOptionsPage();
@@ -105,63 +118,37 @@ function IndexPopup() {
         return;
       }
       
-      // 根据模式执行不同操作
-      if (mode === 'preview') {
-        // 预览模式
-        const response = await chrome.runtime.sendMessage({ 
-          action: 'previewOrganize' 
+      // 执行批量整理
+      const confirmMsg = '智能整理将移动未分类的书签到"智能分类"文件夹。\n\n' +
+                        '• 已处理过的书签不会重复处理\n' +
+                        '• 隐私文件夹中的书签不会被处理\n\n' +
+                        '确定要继续吗？';
+      
+      if (!confirm(confirmMsg)) {
+        setLoading(false);
+        setOrganizingProgress({
+          current: 0,
+          total: 0,
+          currentBookmark: '',
+          status: 'idle'
         });
-        
-        if (response.success) {
-          // 显示预览结果 - 保存到storage供新标签页读取
-          await chrome.storage.local.set({ 
-            previewMode: true,
-            previewResults: response.results 
-          });
-          
-          // 打开设置页面的预览视图
-          chrome.runtime.openOptionsPage();
-        } else {
-          alert(`预览失败: ${response.error || '未知错误'}`);
-        }
-      } else if (mode === 'single') {
-        // 单文件夹模式 - 在设置页面显示
-        await chrome.storage.local.set({ 
-          folderSelectorMode: true
-        });
-        chrome.runtime.openOptionsPage();
+        return;
+      }
+      
+      const response = await chrome.runtime.sendMessage({ 
+        action: 'batchOrganize' 
+      });
+      
+      if (response.success) {
+        // 成功消息已经通过进度状态显示
       } else {
-        // 正常批量整理
-        const confirmMsg = '智能整理将移动未分类的书签到"智能分类"文件夹。\n\n' +
-                          '• 已处理过的书签不会重复处理\n' +
-                          '• 隐私文件夹中的书签不会被处理\n' +
-                          '• 建议先使用"预览模式"查看效果\n\n' +
-                          '确定要继续吗？';
-        
-        if (!confirm(confirmMsg)) {
-          return;
-        }
-        
-        const response = await chrome.runtime.sendMessage({ 
-          action: 'batchOrganize' 
-        });
-        
-        if (response.success) {
-          alert(`智能整理完成！\n已处理 ${response.processed} 个书签`);
-        } else {
-          alert(`整理失败: ${response.error || '未知错误'}`);
-        }
+        alert(`整理失败: ${response.error || '未知错误'}`);
       }
     } catch (error) {
       console.error('智能整理失败:', error);
       alert('整理失败，请重试');
     } finally {
       setLoading(false);
-      // 移除加载提示
-      const overlay = document.getElementById('processing-overlay');
-      if (overlay) {
-        overlay.remove();
-      }
     }
   };
 
@@ -204,82 +191,79 @@ function IndexPopup() {
           </span>
         </div>
         
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={handleSmartOrganize}
-            disabled={loading}
-            style={{
-              flex: 1,
-              padding: '10px',
-              backgroundColor: loading ? '#ccc' : '#4CAF50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              fontSize: '14px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'background-color 0.3s'
-            }}
-          >
-            {loading ? '处理中...' : '🤖 智能整理'}
-          </button>
-          <button
-            onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-            style={{
-              padding: '10px',
-              backgroundColor: '#2196F3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              fontSize: '14px',
-              cursor: 'pointer'
-            }}
-          >
-            ⚙️
-          </button>
-        </div>
-        
-        {showAdvancedOptions && (
-          <div style={{
-            marginTop: '10px',
+        <button
+          onClick={handleSmartOrganize}
+          disabled={loading || organizingProgress.status === 'processing'}
+          style={{
+            width: '100%',
             padding: '10px',
-            backgroundColor: '#f0f0f0',
+            backgroundColor: loading || organizingProgress.status === 'processing' ? '#ccc' : '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            fontSize: '14px',
+            cursor: loading || organizingProgress.status === 'processing' ? 'not-allowed' : 'pointer',
+            transition: 'background-color 0.3s'
+          }}
+        >
+          {loading || organizingProgress.status === 'processing' ? '处理中...' : '🤖 智能整理'}
+        </button>
+        
+        {/* 进度显示 */}
+        {organizingProgress.status !== 'idle' && (
+          <div style={{
+            marginTop: '15px',
+            padding: '10px',
+            backgroundColor: '#f5f5f5',
             borderRadius: '5px',
             fontSize: '12px'
           }}>
-            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px' }}>高级选项</h4>
-            <button
-              onClick={() => handleSmartOrganize('preview')}
-              disabled={loading}
-              style={{
-                width: '100%',
-                padding: '8px',
-                marginBottom: '6px',
-                backgroundColor: '#FF9800',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                cursor: loading ? 'not-allowed' : 'pointer'
-              }}
-            >
-              👁️ 预览模式（仅显示建议）
-            </button>
-            <button
-              onClick={() => handleSmartOrganize('single')}
-              disabled={loading}
-              style={{
-                width: '100%',
-                padding: '8px',
-                backgroundColor: '#9C27B0',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                cursor: loading ? 'not-allowed' : 'pointer'
-              }}
-            >
-              📁 整理单个文件夹
-            </button>
+            {organizingProgress.status === 'processing' && (
+              <>
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    marginBottom: '4px'
+                  }}>
+                    <span>整理进度</span>
+                    <span>{organizingProgress.current} / {organizingProgress.total}</span>
+                  </div>
+                  <div style={{
+                    width: '100%',
+                    height: '8px',
+                    backgroundColor: '#e0e0e0',
+                    borderRadius: '4px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      width: `${organizingProgress.total > 0 ? (organizingProgress.current / organizingProgress.total * 100) : 0}%`,
+                      height: '100%',
+                      backgroundColor: '#4CAF50',
+                      transition: 'width 0.3s'
+                    }} />
+                  </div>
+                </div>
+                <div style={{ 
+                  color: '#666',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  正在处理: {organizingProgress.currentBookmark}
+                </div>
+              </>
+            )}
+            {organizingProgress.status === 'completed' && (
+              <div style={{ color: '#4CAF50', textAlign: 'center' }}>
+                ✓ 智能整理完成！已处理 {organizingProgress.total} 个书签
+              </div>
+            )}
+            {organizingProgress.status === 'error' && (
+              <div style={{ color: '#f44336', textAlign: 'center' }}>
+                ✗ 整理失败，请查看控制台了解详情
+              </div>
+            )}
           </div>
         )}
       </div>
