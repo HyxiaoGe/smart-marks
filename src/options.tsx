@@ -56,11 +56,30 @@ function OptionsPage() {
   } | null>(null);
   
   const [showApiKey, setShowApiKey] = useState(false);
+  
+  // 新增状态：控制显示哪个页面
+  const [activeView, setActiveView] = useState<'settings' | 'preview' | 'folder-selector'>('settings');
+  const [previewResults, setPreviewResults] = useState<any[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // 加载设置和书签文件夹
   useEffect(() => {
     loadSettings();
     loadBookmarkFolders();
+    
+    // 检查是否有预览数据或文件夹选择模式
+    chrome.storage.local.get(['previewMode', 'previewResults', 'folderSelectorMode'], (data) => {
+      if (data.previewMode && data.previewResults) {
+        setPreviewResults(data.previewResults);
+        setActiveView('preview');
+        // 清除标记
+        chrome.storage.local.remove(['previewMode']);
+      } else if (data.folderSelectorMode) {
+        setActiveView('folder-selector');
+        // 清除标记
+        chrome.storage.local.remove(['folderSelectorMode']);
+      }
+    });
   }, []);
 
   // 加载保存的设置
@@ -386,17 +405,37 @@ ${examples.join('\n')}
       padding: '20px', 
       fontFamily: 'Arial, sans-serif' 
     }}>
-      <h1 style={{ color: '#333', marginBottom: '30px' }}>
-        🔖 Smart Marks 设置
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '30px' }}>
+        <h1 style={{ color: '#333', margin: 0 }}>
+          🔖 Smart Marks {activeView === 'preview' ? '- 智能分类预览' : activeView === 'folder-selector' ? '- 选择文件夹' : '设置'}
+        </h1>
+        {activeView !== 'settings' && (
+          <button
+            onClick={() => setActiveView('settings')}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#666',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer'
+            }}
+          >
+            返回设置
+          </button>
+        )}
+      </div>
 
-      {/* AI设置 */}
-      <div style={{ 
-        backgroundColor: '#f3f4f6', 
-        padding: '20px', 
-        borderRadius: '8px', 
-        marginBottom: '20px' 
-      }}>
+      {/* 根据activeView显示不同内容 */}
+      {activeView === 'settings' ? (
+        <>
+          {/* AI设置 */}
+          <div style={{ 
+            backgroundColor: '#f3f4f6', 
+            padding: '20px', 
+            borderRadius: '8px', 
+            marginBottom: '20px' 
+          }}>
         <h2 style={{ color: '#333', marginBottom: '15px' }}>
           🤖 AI智能分类设置
         </h2>
@@ -809,6 +848,305 @@ ${examples.join('\n')}
           <li><strong>同步状态</strong>：设置会自动同步到Chrome账户，可查看同步状态</li>
           <li><strong>隐私保护</strong>：被排除的文件夹中的书签不会被AI处理</li>
         </ul>
+      </div>
+        </>
+      ) : activeView === 'preview' ? (
+        /* 预览视图 */
+        <PreviewView 
+          results={previewResults} 
+          onBack={() => setActiveView('settings')}
+          setResults={setPreviewResults}
+        />
+      ) : (
+        /* 文件夹选择视图 */
+        <FolderSelectorView 
+          onBack={() => setActiveView('settings')}
+        />
+      )}
+    </div>
+  );
+}
+
+// 预览视图组件
+function PreviewView({ results, onBack, setResults }: { 
+  results: any[], 
+  onBack: () => void,
+  setResults: (results: any[]) => void 
+}) {
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const handleApply = async (result: any) => {
+    setProcessingId(result.bookmark.id);
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'moveBookmark',
+        bookmarkId: result.bookmark.id,
+        category: result.suggestion.category
+      });
+
+      if (response.success) {
+        setResults(results.filter(r => r.bookmark.id !== result.bookmark.id));
+        chrome.storage.local.set({ 
+          previewResults: results.filter(r => r.bookmark.id !== result.bookmark.id) 
+        });
+      } else {
+        alert(`移动失败: ${response.error || '未知错误'}`);
+      }
+    } catch (error) {
+      console.error('应用建议失败:', error);
+      alert('操作失败，请重试');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleApplyAll = async () => {
+    if (!confirm(`确定要应用所有 ${results.length} 个建议吗？`)) {
+      return;
+    }
+
+    let successCount = 0;
+    for (const result of results) {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'moveBookmark',
+          bookmarkId: result.bookmark.id,
+          category: result.suggestion.category
+        });
+
+        if (response.success) {
+          successCount++;
+        }
+      } catch (error) {
+        console.error('移动书签失败:', error);
+      }
+    }
+
+    alert(`操作完成！成功移动 ${successCount} 个书签`);
+    setResults([]);
+    chrome.storage.local.remove(['previewResults']);
+  };
+
+  if (results.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '50px' }}>
+        <p>没有待分类的书签</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+        <p style={{ color: '#666' }}>共 {results.length} 个书签待分类</p>
+        <button
+          onClick={handleApplyAll}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            marginRight: '10px'
+          }}
+        >
+          应用所有建议
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gap: '15px' }}>
+        {results.map((result) => (
+          <div key={result.bookmark.id} style={{
+            backgroundColor: 'white',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            padding: '15px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: '0 0 5px 0', fontSize: '16px' }}>{result.bookmark.title}</h3>
+                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#666' }}>
+                  {result.bookmark.url}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    backgroundColor: '#E3F2FD',
+                    color: '#2196F3',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontSize: '14px'
+                  }}>
+                    📁 {result.suggestion.category}
+                  </span>
+                  <span style={{
+                    color: result.suggestion.confidence >= 0.8 ? '#4CAF50' : 
+                           result.suggestion.confidence >= 0.6 ? '#FF9800' : '#F44336',
+                    fontSize: '12px'
+                  }}>
+                    置信度: {(result.suggestion.confidence * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => handleApply(result)}
+                disabled={processingId === result.bookmark.id}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: processingId === result.bookmark.id ? '#ccc' : '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: processingId === result.bookmark.id ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {processingId === result.bookmark.id ? '处理中...' : '应用'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 文件夹选择视图组件
+function FolderSelectorView({ onBack }: { onBack: () => void }) {
+  const [folders, setFolders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadFolders();
+  }, []);
+
+  const loadFolders = async () => {
+    try {
+      const bookmarkTree = await chrome.bookmarks.getTree();
+      const folderList: any[] = [];
+      
+      function traverseBookmarks(nodes: chrome.bookmarks.BookmarkTreeNode[], path = '') {
+        for (const node of nodes) {
+          if (!node.url && node.children) {
+            const currentPath = path ? `${path} > ${node.title}` : node.title;
+            
+            let bookmarkCount = 0;
+            function countBookmarks(children: chrome.bookmarks.BookmarkTreeNode[]) {
+              for (const child of children) {
+                if (child.url) {
+                  bookmarkCount++;
+                } else if (child.children) {
+                  countBookmarks(child.children);
+                }
+              }
+            }
+            
+            countBookmarks(node.children);
+            
+            if (node.title !== '智能分类' && bookmarkCount > 0) {
+              folderList.push({
+                id: node.id,
+                title: node.title,
+                path: currentPath,
+                bookmarkCount
+              });
+            }
+            
+            traverseBookmarks(node.children, currentPath);
+          }
+        }
+      }
+      
+      traverseBookmarks(bookmarkTree);
+      folderList.sort((a, b) => b.bookmarkCount - a.bookmarkCount);
+      setFolders(folderList);
+    } catch (error) {
+      console.error('加载文件夹失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOrganizeFolder = async (folder: any) => {
+    if (!confirm(`确定要整理文件夹 "${folder.title}" 中的 ${folder.bookmarkCount} 个书签吗？`)) {
+      return;
+    }
+
+    setProcessingId(folder.id);
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'organizeSingleFolder',
+        folderId: folder.id
+      });
+
+      if (response.success) {
+        alert(`整理完成！已处理 ${response.processed} 个书签`);
+        await loadFolders();
+      } else {
+        alert(`整理失败: ${response.error || '未知错误'}`);
+      }
+    } catch (error) {
+      console.error('整理文件夹失败:', error);
+      alert('操作失败，请重试');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '50px' }}>加载中...</div>;
+  }
+
+  if (folders.length === 0) {
+    return <div style={{ textAlign: 'center', padding: '50px' }}>没有可整理的文件夹</div>;
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: '20px', textAlign: 'center', color: '#666' }}>
+        <p>选择一个文件夹进行智能整理</p>
+      </div>
+
+      <div style={{ display: 'grid', gap: '15px' }}>
+        {folders.map((folder) => (
+          <div key={folder.id} style={{
+            backgroundColor: 'white',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            padding: '15px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div>
+              <h3 style={{ margin: '0 0 5px 0', fontSize: '16px' }}>{folder.title}</h3>
+              <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: '#666' }}>
+                路径: {folder.path}
+              </p>
+              <p style={{ margin: '0', fontSize: '14px', color: '#2196F3' }}>
+                包含 {folder.bookmarkCount} 个书签
+              </p>
+            </div>
+            <button
+              onClick={() => handleOrganizeFolder(folder)}
+              disabled={processingId === folder.id}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: processingId === folder.id ? '#ccc' : '#9C27B0',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: processingId === folder.id ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {processingId === folder.id ? '整理中...' : '整理此文件夹'}
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

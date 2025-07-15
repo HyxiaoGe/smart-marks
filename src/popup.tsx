@@ -119,18 +119,17 @@ function IndexPopup() {
             previewResults: response.results 
           });
           
-          // 打开新标签页显示预览
-          chrome.tabs.create({
-            url: chrome.runtime.getURL('preview.html')
-          });
+          // 打开设置页面的预览视图
+          chrome.runtime.openOptionsPage();
         } else {
           alert(`预览失败: ${response.error || '未知错误'}`);
         }
       } else if (mode === 'single') {
-        // 单文件夹模式 - 打开新标签页
-        chrome.tabs.create({
-          url: chrome.runtime.getURL('folder-selector.html')
+        // 单文件夹模式 - 在设置页面显示
+        await chrome.storage.local.set({ 
+          folderSelectorMode: true
         });
+        chrome.runtime.openOptionsPage();
       } else {
         // 正常批量整理
         const confirmMsg = '智能整理将移动未分类的书签到"智能分类"文件夹。\n\n' +

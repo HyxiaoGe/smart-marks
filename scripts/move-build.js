@@ -60,24 +60,6 @@ if (fs.existsSync(staticDir)) {
   }
 }
 
-// 复制静态HTML页面
-const srcDir = path.join(__dirname, '..', 'src');
-const staticPages = ['static-preview.html', 'static-folder-selector.html'];
-
-staticPages.forEach(fileName => {
-  const srcPath = path.join(srcDir, fileName);
-  if (fs.existsSync(srcPath)) {
-    // 去掉 'static-' 前缀
-    const targetFileName = fileName.replace('static-', '');
-    const targetPath = path.join(targetDir, targetFileName);
-    try {
-      fs.copyFileSync(srcPath, targetPath);
-      console.log(`已复制: ${fileName} -> ${targetFileName}`);
-    } catch (err) {
-      console.error(`复制 ${fileName} 失败:`, err.message);
-    }
-  }
-});
 
 
 // 递归复制目录
