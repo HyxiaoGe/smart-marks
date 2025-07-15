@@ -5,6 +5,7 @@
 import { shouldFilterBookmark, loadFilterSettings } from './utils/filter-utils';
 import { classifyBookmark as aiClassifyBookmark } from './services/ai-service';
 import { showNotification, showProgressNotification, clearProgressNotification } from './utils/notification';
+import { organizeHistory } from './services/organize-history';
 
 // 存储页面元数据的临时缓存
 const pageMetadataCache = new Map<string, any>();
@@ -164,6 +165,19 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
     if (result.confidence > 0.7) {
       await moveBookmarkToCategory(bookmark, result.category);
       console.log(`书签已自动分类到: ${result.category} (置信度: ${result.confidence})`);
+      
+      // 记录到历史
+      await organizeHistory.addRecord({
+        bookmarkId: bookmark.id!,
+        bookmarkTitle: bookmark.title,
+        bookmarkUrl: bookmark.url!,
+        fromFolder: '',
+        toFolder: result.category,
+        timestamp: Date.now(),
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        status: 'completed'
+      });
     } else {
       console.log(`分类置信度较低 (${result.confidence})，跳过自动分类`);
       // TODO: 可以通过通知让用户确认
@@ -395,6 +409,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const bookmarks = await chrome.bookmarks.getTree();
       const allBookmarks = flattenBookmarks(bookmarks);
       
+      // 开始新的整理会话
+      const sessionId = await organizeHistory.startSession(allBookmarks.length);
+      
       // 获取过滤器设置
       const filterSettings = await loadFilterSettings();
       
@@ -457,17 +474,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         
         // 批量整理时不获取元数据，直接使用缓存或空值
         const metadata = pageMetadataCache.get(bookmark.url || '');
+        
+        // 记录原始位置
+        let fromFolder = '';
+        if (bookmark.parentId) {
+          try {
+            const [parent] = await chrome.bookmarks.get(bookmark.parentId);
+            fromFolder = parent.title || '';
+          } catch (e) {
+            // 忽略错误
+          }
+        }
+        
         await classifyBookmark(bookmark, metadata, { 
           ...apiSettings, 
           apiKey,
           linkPreviewKey: apiSettings.linkPreviewKey 
-        });
+        }, fromFolder);
         // 添加延迟避免过快调用
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       
       // 清除进度通知
       await clearProgressNotification();
+      
+      // 结束会话
+      await organizeHistory.endSession('completed');
       
       // 显示完成通知
       await showNotification(
@@ -487,6 +519,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: true, processed: bookmarksToOrganize.length });
       } catch (error) {
         console.error('批量整理失败:', error);
+        
+        // 结束会话（错误状态）
+        await organizeHistory.endSession('error');
         
         // 发送错误消息到popup
         chrome.runtime.sendMessage({
@@ -660,6 +695,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     })();
     return true; // 保持消息通道开放
+  } else if (request.type === 'GET_ORGANIZE_HISTORY') {
+    // 获取整理历史
+    (async () => {
+      try {
+        const currentSession = await organizeHistory.getCurrentSession();
+        const recentRecords = await organizeHistory.getRecentRecords(request.limit || 50);
+        const history = await organizeHistory.getHistory(request.limit || 10);
+        
+        sendResponse({
+          success: true,
+          currentSession,
+          recentRecords,
+          history
+        });
+      } catch (error) {
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true;
+  } else if (request.type === 'GET_UNPROCESSED_BOOKMARKS') {
+    // 获取未处理的书签
+    (async () => {
+      try {
+        const unprocessed = await organizeHistory.getUnprocessedBookmarks(request.includeAllFolders);
+        sendResponse({ success: true, bookmarks: unprocessed });
+      } catch (error) {
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true;
+  } else if (request.type === 'CLEAR_PROCESSED_BOOKMARKS') {
+    // 清理已处理记录
+    (async () => {
+      try {
+        await organizeHistory.clearProcessedBookmarks();
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true;
+  } else if (request.type === 'UNDO_ORGANIZE') {
+    // 撤销整理操作
+    (async () => {
+      try {
+        const success = await organizeHistory.undoRecord(request.recordId);
+        sendResponse({ success });
+      } catch (error) {
+        sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true;
   }
   return false;
 });

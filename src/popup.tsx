@@ -121,8 +121,10 @@ function IndexPopup() {
       // 执行批量整理
       const confirmMsg = '智能整理将移动未分类的书签到"智能分类"文件夹。\n\n' +
                         '• 已处理过的书签不会重复处理\n' +
-                        '• 隐私文件夹中的书签不会被处理\n\n' +
-                        '确定要继续吗？';
+                        '• 隐私文件夹中的书签不会被处理\n' +
+                        '• 默认只处理不在智能分类文件夹中的书签\n\n' +
+                        '确定要继续吗？\n\n' +
+                        '提示：可以在设置页面查看整理进度和历史记录。';
       
       if (!confirm(confirmMsg)) {
         setLoading(false);
@@ -278,15 +280,26 @@ function IndexPopup() {
           快速操作
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button style={{
-            padding: '8px 12px',
-            backgroundColor: '#2196F3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '12px',
-            cursor: 'pointer'
-          }}>
+          <button 
+            onClick={() => {
+              chrome.runtime.openOptionsPage();
+              // 发送消息让设置页面显示文件夹管理
+              setTimeout(() => {
+                chrome.runtime.sendMessage({ 
+                  type: 'SHOW_FOLDER_MANAGER' 
+                }).catch(() => {});
+              }, 500);
+            }}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: '#2196F3',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
             📁 管理文件夹
           </button>
           <button style={{
