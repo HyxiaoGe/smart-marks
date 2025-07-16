@@ -16,9 +16,8 @@ export async function showNotification(
     return;
   }
   
-  const iconUrl = type === 'success' ? '/assets/success-icon.png' : 
-                  type === 'error' ? '/assets/error-icon.png' : 
-                  '/assets/info-icon.png';
+  // 使用扩展的默认图标（Plasmo 生成的图标文件名）
+  const iconUrl = chrome.runtime.getURL('icon128.plasmo.ef13585c.png');
   
   try {
     // 创建通知
@@ -58,7 +57,7 @@ export async function showProgressNotification(
   try {
     await chrome.notifications.create('progress', {
       type: 'progress',
-      iconUrl: '/assets/icon48.png',
+      iconUrl: chrome.runtime.getURL('icon48.plasmo.b88acab9.png'),
       title: '智能整理进行中',
       message: message,
       progress: progress,

@@ -37,7 +37,8 @@
       "bookmarks",
       "storage",
       "activeTab",
-      "tabs"
+      "tabs",
+      "notifications"
     ],
     "host_permissions": [
       "https://api.openai.com/*",
