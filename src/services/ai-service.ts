@@ -205,6 +205,101 @@ ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(',
 }
 
 /**
+ * 调用Deepseek API进行书签分类
+ */
+async function classifyWithDeepseek(
+  bookmarkInfo: BookmarkInfo,
+  existingFolders: string[],
+  apiKey: string,
+  model: string
+): Promise<ClassificationResult> {
+  // 标准化现有文件夹名称
+  const normalizedExisting = existingFolders.map(f => normalizeFolder(f));
+  const uniqueFolders = [...new Set([...normalizedExisting, ...STANDARD_FOLDERS])].sort();
+  
+  const systemPrompt = `你是一个智能书签分类助手。你的任务是：
+1. 根据书签的标题、URL和描述，将其分类到最合适的文件夹中
+2. 为书签生成一个简洁清晰的标题
+
+推荐的标准文件夹列表：
+${uniqueFolders.map(f => `- ${f}`).join('\n')}
+
+分类规则：
+1. 必须选择上述列表中的文件夹
+2. 优先选择最匹配的标准文件夹
+3. 文件夹名称必须与列表中的完全一致
+4. 考虑书签的主要用途和内容类型
+
+标题优化规则：
+1. 提取核心内容，去除冗余信息
+2. 去除括号中的次要信息、序号、网站后缀等
+3. 保持简洁（建议10-20个字符）
+4. 保留关键词和品牌名
+5. 中文优先，除非是专有名词
+
+请以JSON格式返回结果，格式如下：
+{
+  "category": "文件夹名称",
+  "confidence": 0.8,
+  "reasoning": "分类理由",
+  "suggestedTitle": "优化后的标题"
+}`;
+
+  const userPrompt = `请对以下书签进行分类并优化标题：
+原始标题：${bookmarkInfo.title}
+URL：${bookmarkInfo.url}
+${bookmarkInfo.description ? `描述：${bookmarkInfo.description}` : ''}
+${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', ')}` : ''}
+
+请根据内容生成一个简洁的标题，例如：
+- "(16) 「超詳細教學」n8n AI 實作..." → "n8n AI教程"
+- "Bundle Disney+, Hulu, and ESPN+ | Bundle and Save" → "Disney+套餐"
+- "Cursor Directory - Cursor Rules & MCP Servers" → "Cursor目录"`;
+
+  try {
+    const response = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+        response_format: { type: "json_object" }
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Deepseek API错误响应:', errorData);
+      throw new Error(`Deepseek API错误: ${errorData.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const result = JSON.parse(data.choices[0].message.content);
+    
+    // 标准化返回的分类名称
+    const normalizedCategory = normalizeFolder(result.category || '未分类');
+    
+    return {
+      category: normalizedCategory,
+      confidence: result.confidence || 0.5,
+      reasoning: result.reasoning,
+      suggestedTitle: result.suggestedTitle
+    };
+  } catch (error) {
+    console.error('Deepseek分类失败:', error);
+    throw error;
+  }
+}
+
+/**
  * 获取现有的书签文件夹列表
  */
 export async function getExistingFolders(): Promise<string[]> {
@@ -351,6 +446,8 @@ export async function classifyBookmark(
     result = await classifyWithOpenAI(bookmarkInfo, existingFolders, apiSettings.apiKey, apiSettings.model);
   } else if (apiSettings.provider === 'gemini') {
     result = await classifyWithGemini(bookmarkInfo, existingFolders, apiSettings.apiKey, apiSettings.model);
+  } else if (apiSettings.provider === 'deepseek') {
+    result = await classifyWithDeepseek(bookmarkInfo, existingFolders, apiSettings.apiKey, apiSettings.model);
   } else {
     throw new Error('不支持的AI提供商');
   }

@@ -10,9 +10,10 @@ interface FilterSettings {
 }
 
 interface APISettings {
-  provider: 'openai' | 'gemini' | '';
+  provider: 'openai' | 'gemini' | 'deepseek' | '';
   openaiKey?: string;
   geminiKey?: string;
+  deepseekKey?: string;
   linkPreviewKey?: string;
   linkPreviewKeys?: string[];
   model: string;
@@ -53,6 +54,7 @@ function OptionsPage() {
     provider: '',
     openaiKey: '',
     geminiKey: '',
+    deepseekKey: '',
     linkPreviewKey: '',
     linkPreviewKeys: [],
     model: '',
@@ -196,7 +198,9 @@ function OptionsPage() {
   const testAPIConnection = async () => {
     console.log('开始测试API连接，当前设置:', apiSettings);
     
-    const currentKey = apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey;
+    const currentKey = apiSettings.provider === 'openai' ? apiSettings.openaiKey : 
+                       apiSettings.provider === 'gemini' ? apiSettings.geminiKey :
+                       apiSettings.provider === 'deepseek' ? apiSettings.deepseekKey : '';
     
     if (!currentKey || !apiSettings.provider) {
       console.log('API密钥或提供商未设置');
@@ -536,11 +540,13 @@ ${examples.join('\n')}
               <select
                 value={apiSettings.provider}
                 onChange={(e) => {
-                  const provider = e.target.value as 'openai' | 'gemini' | '';
+                  const provider = e.target.value as 'openai' | 'gemini' | 'deepseek' | '';
                   setApiSettings(prev => ({ 
                     ...prev, 
                     provider,
-                    model: provider === 'openai' ? 'gpt-4o-mini' : provider === 'gemini' ? 'gemini-1.5-flash' : ''
+                    model: provider === 'openai' ? 'gpt-4o-mini' : 
+                          provider === 'gemini' ? 'gemini-1.5-flash' : 
+                          provider === 'deepseek' ? 'deepseek-chat' : ''
                   }));
                 }}
                 style={{
@@ -554,6 +560,7 @@ ${examples.join('\n')}
                 <option value="">请选择AI服务</option>
                 <option value="openai">OpenAI (GPT)</option>
                 <option value="gemini">Google Gemini</option>
+                <option value="deepseek">Deepseek</option>
               </select>
             </div>
 
@@ -580,12 +587,22 @@ ${examples.join('\n')}
                   </label>
                   <input
                     type={showApiKey ? "text" : "password"}
-                    value={apiSettings.provider === 'openai' ? (apiSettings.openaiKey || '') : (apiSettings.geminiKey || '')}
+                    value={
+                      apiSettings.provider === 'openai' ? (apiSettings.openaiKey || '') : 
+                      apiSettings.provider === 'gemini' ? (apiSettings.geminiKey || '') :
+                      apiSettings.provider === 'deepseek' ? (apiSettings.deepseekKey || '') : ''
+                    }
                     onChange={(e) => setApiSettings(prev => ({ 
                       ...prev, 
-                      [apiSettings.provider === 'openai' ? 'openaiKey' : 'geminiKey']: e.target.value 
+                      [apiSettings.provider === 'openai' ? 'openaiKey' : 
+                       apiSettings.provider === 'gemini' ? 'geminiKey' : 
+                       'deepseekKey']: e.target.value 
                     }))}
-                    placeholder={`请输入${apiSettings.provider === 'openai' ? 'OpenAI' : 'Google'} API密钥`}
+                    placeholder={`请输入${
+                      apiSettings.provider === 'openai' ? 'OpenAI' : 
+                      apiSettings.provider === 'gemini' ? 'Google' : 
+                      'Deepseek'
+                    } API密钥`}
                     style={{
                       width: '100%',
                       padding: '8px',
@@ -597,13 +614,20 @@ ${examples.join('\n')}
                   <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
                     {apiSettings.provider === 'openai' ? (
                       <span>获取API密钥：<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI控制台</a></span>
-                    ) : (
+                    ) : apiSettings.provider === 'gemini' ? (
                       <span>获取API密钥：<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a></span>
+                    ) : (
+                      <span>获取API密钥：<a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer">Deepseek平台</a></span>
                     )}
                     {((apiSettings.provider === 'openai' && apiSettings.openaiKey) || 
-                      (apiSettings.provider === 'gemini' && apiSettings.geminiKey)) && (
+                      (apiSettings.provider === 'gemini' && apiSettings.geminiKey) ||
+                      (apiSettings.provider === 'deepseek' && apiSettings.deepseekKey)) && (
                       <span style={{ marginLeft: '10px', color: '#4CAF50' }}>
-                        （已输入 {apiSettings.provider === 'openai' ? apiSettings.openaiKey!.length : apiSettings.geminiKey!.length} 个字符）
+                        （已输入 {
+                          apiSettings.provider === 'openai' ? apiSettings.openaiKey!.length : 
+                          apiSettings.provider === 'gemini' ? apiSettings.geminiKey!.length :
+                          apiSettings.deepseekKey!.length
+                        } 个字符）
                       </span>
                     )}
                   </div>
@@ -633,10 +657,15 @@ ${examples.join('\n')}
                         <option value="gpt-4o">GPT-4o (效果更好，成本高)</option>
                         <option value="gpt-3.5-turbo">GPT-3.5-turbo (经济实惠)</option>
                       </>
-                    ) : (
+                    ) : apiSettings.provider === 'gemini' ? (
                       <>
                         <option value="gemini-1.5-flash">Gemini 1.5 Flash (推荐)</option>
                         <option value="gemini-1.5-pro">Gemini 1.5 Pro (更强大)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="deepseek-chat">DeepSeek-V3 (最新版本，推荐)</option>
+                        <option value="deepseek-reasoner">DeepSeek-R1 (推理模型)</option>
                       </>
                     )}
                   </select>
@@ -682,15 +711,27 @@ ${examples.join('\n')}
                 <div style={{ marginBottom: '15px' }}>
                   <button
                     onClick={testAPIConnection}
-                    disabled={!(apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey) || testingAPI}
+                    disabled={!(
+                      apiSettings.provider === 'openai' ? apiSettings.openaiKey : 
+                      apiSettings.provider === 'gemini' ? apiSettings.geminiKey :
+                      apiSettings.provider === 'deepseek' ? apiSettings.deepseekKey : false
+                    ) || testingAPI}
                     style={{
                       padding: '8px 16px',
                       backgroundColor: testingAPI ? '#ccc' : '#4CAF50',
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: testingAPI || !(apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey) ? 'not-allowed' : 'pointer',
-                      opacity: !(apiSettings.provider === 'openai' ? apiSettings.openaiKey : apiSettings.geminiKey) ? 0.6 : 1
+                      cursor: testingAPI || !(
+                        apiSettings.provider === 'openai' ? apiSettings.openaiKey : 
+                        apiSettings.provider === 'gemini' ? apiSettings.geminiKey :
+                        apiSettings.provider === 'deepseek' ? apiSettings.deepseekKey : false
+                      ) ? 'not-allowed' : 'pointer',
+                      opacity: !(
+                        apiSettings.provider === 'openai' ? apiSettings.openaiKey : 
+                        apiSettings.provider === 'gemini' ? apiSettings.geminiKey :
+                        apiSettings.provider === 'deepseek' ? apiSettings.deepseekKey : false
+                      ) ? 0.6 : 1
                     }}
                   >
                     {testingAPI ? '测试中...' : '测试API连接'}

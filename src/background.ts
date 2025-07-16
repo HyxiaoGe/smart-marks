@@ -74,7 +74,9 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   const settings = await chrome.storage.sync.get(['apiSettings', 'filterSettings']);
   const apiSettings = settings.apiSettings;
   
-  const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+  const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : 
+                 apiSettings?.provider === 'gemini' ? apiSettings.geminiKey :
+                 apiSettings?.provider === 'deepseek' ? apiSettings.deepseekKey : '';
   
   if (!apiSettings?.autoClassify || !apiKey) {
     // AI自动分类未启用或未配置API
@@ -258,7 +260,9 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
     const settings = await chrome.storage.sync.get(['apiSettings']);
     const apiSettings = settings.apiSettings;
     
-    const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+    const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : 
+                 apiSettings?.provider === 'gemini' ? apiSettings.geminiKey :
+                 apiSettings?.provider === 'deepseek' ? apiSettings.deepseekKey : '';
     
     if (!apiSettings?.autoClassify || !apiKey) {
       // AI自动分类未启用或未配置API
@@ -739,7 +743,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const settings = await chrome.storage.sync.get(['apiSettings']);
       const apiSettings = settings.apiSettings;
       
-      const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+      const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : 
+                 apiSettings?.provider === 'gemini' ? apiSettings.geminiKey :
+                 apiSettings?.provider === 'deepseek' ? apiSettings.deepseekKey : '';
       
       if (!apiKey) {
         sendResponse({ success: false, error: '请先配置API密钥' });
@@ -875,7 +881,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const settings = await chrome.storage.sync.get(['apiSettings']);
         const apiSettings = settings.apiSettings;
         
-        const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+        const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : 
+                 apiSettings?.provider === 'gemini' ? apiSettings.geminiKey :
+                 apiSettings?.provider === 'deepseek' ? apiSettings.deepseekKey : '';
         
         if (!apiKey) {
           sendResponse({ success: false, error: '请先配置API密钥' });
@@ -947,7 +955,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const settings = await chrome.storage.sync.get(['apiSettings']);
         const apiSettings = settings.apiSettings;
         
-        const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+        const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : 
+                 apiSettings?.provider === 'gemini' ? apiSettings.geminiKey :
+                 apiSettings?.provider === 'deepseek' ? apiSettings.deepseekKey : '';
         
         if (!apiKey) {
           sendResponse({ success: false, error: '请先配置API密钥' });
