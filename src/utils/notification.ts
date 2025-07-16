@@ -17,6 +17,14 @@ chrome.storage.local.get('recentNotifications').then(data => {
   }
 });
 
+// 监听存储变化，同步更新内存中的通知列表
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.recentNotifications) {
+    recentNotifications = changes.recentNotifications.newValue || [];
+    console.log('通知列表已同步更新:', recentNotifications.length, '条');
+  }
+});
+
 /**
  * 显示徽章和存储通知（不打扰用户）
  */

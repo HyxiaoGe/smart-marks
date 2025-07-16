@@ -215,7 +215,10 @@ export async function classifyBookmark(
     model: string;
     linkPreviewKey?: string;
     linkPreviewKeys?: string[];
-  }
+  },
+  options: {
+    forceReclassify?: boolean;
+  } = {}
 ): Promise<ClassificationResult> {
   console.log('开始智能分类:', bookmarkInfo.url);
   
@@ -239,15 +242,21 @@ export async function classifyBookmark(
     };
   }
   
-  // 2. 检查域名分类缓存
-  const cachedClassification = classificationCache.getCachedClassification(bookmarkInfo.url);
-  if (cachedClassification) {
-    console.log('使用缓存分类:', cachedClassification.category);
-    return {
-      category: cachedClassification.category,
-      confidence: cachedClassification.confidence,
-      reasoning: '基于同域名历史分类'
-    };
+  // 2. 检查域名分类缓存（除非强制重新分类）
+  if (!options.forceReclassify) {
+    const cachedClassification = classificationCache.getCachedClassification(bookmarkInfo.url);
+    if (cachedClassification) {
+      console.log('使用缓存分类:', cachedClassification.category);
+      return {
+        category: cachedClassification.category,
+        confidence: cachedClassification.confidence,
+        reasoning: '基于同域名历史分类'
+      };
+    }
+  } else {
+    console.log('强制重新分类，跳过缓存');
+    // 清除该域名的缓存
+    classificationCache.clearDomainCache(bookmarkInfo.url);
   }
   
   // 3. 尝试使用 LinkPreview API 获取元数据（如果配置了）

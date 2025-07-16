@@ -260,6 +260,10 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
     const result = await aiClassifyBookmark(bookmarkInfo, apiSettings);
     console.log('AI分类结果:', result);
     
+    // 添加调试：检查当前文件夹
+    const currentParent = bookmark.parentId ? await getParentFolderName(bookmark.parentId) : '根目录';
+    console.log(`书签当前在: "${currentParent}", AI推荐: "${result.category}"`);
+    
     // 如果置信度高于阈值，则自动分类
     if (result.confidence > 0.7) {
       await moveBookmarkToCategory(bookmark, result.category, isBatchMode);
@@ -370,11 +374,16 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
       console.log(`准备移动书签 "${bookmark.title}" 从 "${currentParentFolder}" 到 "${category}"`);
       
       // 执行移动操作
-      await chrome.bookmarks.move(bookmark.id, {
+      const movedBookmark = await chrome.bookmarks.move(bookmark.id, {
         parentId: categoryFolder.id
       });
       
       console.log(`书签 "${bookmark.title}" 已成功移动到 "${category}" 文件夹`);
+      console.log('移动后的书签信息:', movedBookmark);
+      
+      // 验证移动是否成功
+      const [verifyBookmark] = await chrome.bookmarks.get(bookmark.id);
+      console.log('验证移动结果 - 当前父文件夹ID:', verifyBookmark.parentId, '目标文件夹ID:', categoryFolder.id);
       
       // 记录已处理
       processedBookmarks.add(bookmark.id);

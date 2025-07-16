@@ -183,6 +183,21 @@ class ClassificationCacheService {
   }
 
   /**
+   * 清除特定域名的缓存
+   */
+  clearDomainCache(url: string): void {
+    try {
+      const domain = new URL(url).hostname.replace('www.', '');
+      this.cache.delete(domain);
+      console.log(`已清除域名 ${domain} 的分类缓存`);
+      // 异步保存
+      setTimeout(() => this.saveCache(), 100);
+    } catch (error) {
+      console.error('清除域名缓存失败:', error);
+    }
+  }
+
+  /**
    * 导出缓存数据（用于调试或备份）
    */
   exportCache(): Record<string, any> {
