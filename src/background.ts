@@ -558,6 +558,20 @@ async function testAPIConnection(apiSettings: any) {
         const error = await response.json();
         return { success: false, error: error.error?.message || '无效的API密钥' };
       }
+    } else if (apiSettings.provider === 'deepseek') {
+      // Deepseek 使用兼容 OpenAI 的 API，可以使用 models 端点测试
+      const response = await fetch('https://api.deepseek.com/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${apiSettings.apiKey}`
+        }
+      });
+      
+      if (response.ok) {
+        return { success: true };
+      } else {
+        const error = await response.json();
+        return { success: false, error: error.error?.message || '无效的API密钥' };
+      }
     }
     
     return { success: false, error: '不支持的AI提供商' };
