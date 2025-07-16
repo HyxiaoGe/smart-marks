@@ -18,6 +18,7 @@ interface ClassificationResult {
   category: string;
   confidence: number;
   reasoning?: string;
+  suggestedTitle?: string;
 }
 
 /**
@@ -33,7 +34,9 @@ async function classifyWithOpenAI(
   const normalizedExisting = existingFolders.map(f => normalizeFolder(f));
   const uniqueFolders = [...new Set([...normalizedExisting, ...STANDARD_FOLDERS])].sort();
   
-  const systemPrompt = `你是一个智能书签分类助手。你的任务是根据书签的标题、URL和描述，将其分类到最合适的文件夹中。
+  const systemPrompt = `你是一个智能书签分类助手。你的任务是：
+1. 根据书签的标题、URL和描述，将其分类到最合适的文件夹中
+2. 为书签生成一个简洁清晰的标题
 
 推荐的标准文件夹列表：
 ${uniqueFolders.map(f => `- ${f}`).join('\n')}
@@ -44,18 +47,31 @@ ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 3. 文件夹名称必须与列表中的完全一致
 4. 考虑书签的主要用途和内容类型
 
-请以JSON格式返回分类结果，格式如下：
+标题优化规则：
+1. 提取核心内容，去除冗余信息
+2. 去除括号中的次要信息、序号、网站后缀等
+3. 保持简洁（建议10-20个字符）
+4. 保留关键词和品牌名
+5. 中文优先，除非是专有名词
+
+请以JSON格式返回结果，格式如下：
 {
   "category": "文件夹名称",
   "confidence": 0.8,
-  "reasoning": "分类理由"
+  "reasoning": "分类理由",
+  "suggestedTitle": "优化后的标题"
 }`;
 
-  const userPrompt = `请对以下书签进行分类：
-标题：${bookmarkInfo.title}
+  const userPrompt = `请对以下书签进行分类并优化标题：
+原始标题：${bookmarkInfo.title}
 URL：${bookmarkInfo.url}
 ${bookmarkInfo.description ? `描述：${bookmarkInfo.description}` : ''}
-${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', ')}` : ''}`;
+${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', ')}` : ''}
+
+请根据内容生成一个简洁的标题，例如：
+- "(16) 「超詳細教學」n8n AI 實作..." → "n8n AI教程"
+- "Bundle Disney+, Hulu, and ESPN+ | Bundle and Save" → "Disney+套餐"
+- "Cursor Directory - Cursor Rules & MCP Servers" → "Cursor目录"`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -91,7 +107,8 @@ ${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', '
     return {
       category: normalizedCategory,
       confidence: result.confidence || 0.5,
-      reasoning: result.reasoning
+      reasoning: result.reasoning,
+      suggestedTitle: result.suggestedTitle
     };
   } catch (error) {
     console.error('OpenAI分类失败:', error);
@@ -112,19 +129,26 @@ async function classifyWithGemini(
   const normalizedExisting = existingFolders.map(f => normalizeFolder(f));
   const uniqueFolders = [...new Set([...normalizedExisting, ...STANDARD_FOLDERS])].sort();
   
-  const prompt = `作为一个智能书签分类助手，请根据以下书签信息进行分类。
+  const prompt = `作为一个智能书签分类助手，请完成以下任务：
+1. 根据书签信息进行分类
+2. 生成简洁的标题
 
 推荐的标准文件夹：
 ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 
 书签信息：
-- 标题：${bookmarkInfo.title}
+- 原始标题：${bookmarkInfo.title}
 - URL：${bookmarkInfo.url}
 ${bookmarkInfo.description ? `- 描述：${bookmarkInfo.description}` : ''}
 ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(', ')}` : ''}
 
-请从上述标准文件夹列表中选择最合适的一个。
-返回JSON格式：{"category": "文件夹名称", "confidence": 0.8, "reasoning": "分类理由"}`;
+标题优化要求：
+- 提取核心内容，去除冗余
+- 10-20个字符为佳
+- 去除序号、括号内容、网站后缀等
+- 保持关键词和品牌名
+
+返回JSON格式：{"category": "文件夹名称", "confidence": 0.8, "reasoning": "分类理由", "suggestedTitle": "优化后的标题"}`;
 
   try {
     const response = await fetch(
@@ -171,7 +195,8 @@ ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(',
     return {
       category: normalizedCategory,
       confidence: result.confidence || 0.5,
-      reasoning: result.reasoning
+      reasoning: result.reasoning,
+      suggestedTitle: result.suggestedTitle
     };
   } catch (error) {
     console.error('Gemini分类失败:', error);
@@ -235,10 +260,34 @@ export async function classifyBookmark(
       'dictionary'
     );
     
+    // 对于域名字典匹配，也尝试优化标题
+    let suggestedTitle = bookmarkInfo.title;
+    // 简单的标题优化规则
+    suggestedTitle = suggestedTitle
+      .replace(/^\(\d+\)\s*/, '') // 去除开头的 (数字)
+      .replace(/【.*?】/g, '') // 去除【】中的内容
+      .replace(/\[.*?\]/g, '') // 去除[]中的内容
+      .replace(/「|」|"|"|'|'/g, '') // 去除引号
+      .replace(/\s*[-–—|]\s*YouTube\s*$/i, '') // 去除 YouTube 后缀
+      .replace(/\s*[-–—|]\s*[^-–—|]+\s*$/i, '') // 去除最后的网站名
+      .replace(/\s+/g, ' ') // 合并多个空格
+      .trim();
+    
+    // 特殊处理：如果标题太短，保留原标题
+    if (suggestedTitle.length < 3) {
+      suggestedTitle = bookmarkInfo.title;
+    }
+    
+    // 限制长度
+    if (suggestedTitle.length > 30) {
+      suggestedTitle = suggestedTitle.substring(0, 27) + '...';
+    }
+    
     return {
       category: domainPattern.category,
       confidence: domainPattern.confidence || 0.95,
-      reasoning: `基于域名模式识别（${new URL(bookmarkInfo.url).hostname}）`
+      reasoning: `基于域名模式识别（${new URL(bookmarkInfo.url).hostname}）`,
+      suggestedTitle: suggestedTitle !== bookmarkInfo.title ? suggestedTitle : undefined
     };
   }
   

@@ -330,6 +330,25 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
     
     // 如果置信度高于阈值，则自动分类
     if (result.confidence > 0.7) {
+      // 如果有建议的标题且启用了标题优化，先更新书签标题
+      if (result.suggestedTitle && result.suggestedTitle !== bookmark.title && apiSettings.optimizeTitle !== false) {
+        try {
+          await chrome.bookmarks.update(bookmark.id!, {
+            title: result.suggestedTitle
+          });
+          // 更新本地对象的标题
+          bookmark.title = result.suggestedTitle;
+          
+          await showNotification(
+            '书签标题已优化',
+            `"${bookmarkInfo.title}" → "${result.suggestedTitle}"`,
+            'info'
+          );
+        } catch (error) {
+          console.error('更新书签标题失败:', error);
+        }
+      }
+      
       await moveBookmarkToCategory(bookmark, result.category, isBatchMode);
       
       // 记录到历史
