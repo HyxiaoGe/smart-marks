@@ -63,6 +63,9 @@ const recentlyCreatedBookmarks = new Set<string>();
 // 用于跟踪正在移动的书签，避免竞态条件
 const movingBookmarks = new Set<string>();
 
+// 记录书签的预期位置，用于检测外部干扰
+const expectedLocations = new Map<string, string>();
+
 // 监听新书签创建事件
 chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   console.log('新书签创建:', bookmark);
@@ -152,6 +155,10 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     }
     
     // 总是进行AI分类，除非被过滤
+    // 添加延迟，让Chrome完成其默认操作
+    console.log('等待500ms让Chrome完成默认操作...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     await classifyBookmark(bookmark, metadata, { 
       ...apiSettings, 
       apiKey,
@@ -187,12 +194,14 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
 
 // 监听书签移动事件
 chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
-  console.log('检测到书签移动事件:', {
+  const timestamp = new Date().toISOString();
+  console.warn(`[${timestamp}] 检测到书签移动事件:`, {
     bookmarkId: id,
     oldParentId: moveInfo.oldParentId,
     oldIndex: moveInfo.oldIndex,
     parentId: moveInfo.parentId,
-    index: moveInfo.index
+    index: moveInfo.index,
+    isOurMove: movingBookmarks.has(id)
   });
   
   // 获取书签信息
@@ -201,12 +210,48 @@ chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
     const oldParentName = await getParentFolderName(moveInfo.oldParentId);
     const newParentName = await getParentFolderName(moveInfo.parentId);
     
-    console.log('书签移动详情:', {
-      title: bookmark.title,
-      url: bookmark.url,
-      从: oldParentName,
-      到: newParentName
-    });
+    if (!movingBookmarks.has(id)) {
+      console.error('⚠️ 警告：检测到外部移动操作！', {
+        title: bookmark.title,
+        url: bookmark.url,
+        从: oldParentName,
+        到: newParentName,
+        可能原因: '用户手动操作或其他扩展干扰'
+      });
+      
+      // 如果是刚处理过的书签被外部移动，记录详情
+      if (processedBookmarks.has(id)) {
+        console.error('⚠️ 刚分类的书签被外部移回！这可能是Chrome的默认行为或其他扩展的干扰。');
+        
+        // 检查是否偏离了预期位置
+        const expectedFolder = expectedLocations.get(id);
+        if (expectedFolder && newParentName !== expectedFolder) {
+          console.error(`⚠️ 书签应该在 "${expectedFolder}" 文件夹，但被移到了 "${newParentName}"`);
+          
+          // 尝试移回正确位置
+          console.log('尝试将书签移回正确位置...');
+          setTimeout(async () => {
+            try {
+              const targetFolder = await findOrCreateFolder(expectedFolder, false);
+              if (targetFolder && targetFolder.id !== moveInfo.parentId) {
+                movingBookmarks.add(id);
+                await chrome.bookmarks.move(id, { parentId: targetFolder.id });
+                console.log(`✓ 已将书签移回 "${expectedFolder}" 文件夹`);
+                movingBookmarks.delete(id);
+              }
+            } catch (error) {
+              console.error('移回书签失败:', error);
+            }
+          }, 1000); // 延迟1秒后尝试移回
+        }
+      }
+    } else {
+      console.log('✓ 这是我们插件的移动操作', {
+        title: bookmark.title,
+        从: oldParentName,
+        到: newParentName
+      });
+    }
   } catch (error) {
     console.error('获取移动书签信息失败:', error);
   }
@@ -483,6 +528,15 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
         'success'
       );
       console.log('========== 结束移动书签（成功） ==========\n');
+      
+      // 记录预期位置
+      if (bookmark.id) {
+        expectedLocations.set(bookmark.id, category);
+        // 10秒后清理
+        setTimeout(() => {
+          expectedLocations.delete(bookmark.id);
+        }, 10000);
+      }
       
       // 清除移动标记
       if (bookmark.id) {
