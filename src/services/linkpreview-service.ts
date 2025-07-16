@@ -60,33 +60,21 @@ class LinkPreviewService {
   }
 
   /**
-   * 获取当前可用的 API Key
+   * 获取当前的 API Key
    */
   private getCurrentKey(): string | null {
     if (this.apiKeys.length === 0) return null;
+    return this.apiKeys[this.currentKeyIndex];
+  }
+  
+  /**
+   * 切换到下一个 API Key
+   */
+  private switchToNextKey(): string | null {
+    if (this.apiKeys.length <= 1) return null;
     
-    // 查找有配额的密钥
-    for (let i = 0; i < this.apiKeys.length; i++) {
-      const keyIndex = (this.currentKeyIndex + i) % this.apiKeys.length;
-      const key = this.apiKeys[keyIndex];
-      const quota = this.quotaPerKey.get(key);
-      
-      if (quota && this.hasQuotaForKey(key)) {
-        this.currentKeyIndex = keyIndex;
-        return key;
-      }
-    }
-    
-    // 如果所有密钥都没有配额，检查是否需要重置
-    for (const key of this.apiKeys) {
-      const quota = this.quotaPerKey.get(key);
-      if (quota && Date.now() > quota.resetTime) {
-        this.resetQuotaForKey(key);
-        return key;
-      }
-    }
-    
-    return null;
+    this.currentKeyIndex = (this.currentKeyIndex + 1) % this.apiKeys.length;
+    return this.getCurrentKey();
   }
 
   /**
@@ -156,10 +144,10 @@ class LinkPreviewService {
   }
 
   /**
-   * 检查是否有可用配额（任意密钥）
+   * 检查是否有可用配额（简化版，只检查是否有密钥）
    */
   hasQuota(): boolean {
-    return this.getCurrentKey() !== null;
+    return this.hasApiKey();
   }
 
   /**
@@ -207,10 +195,10 @@ class LinkPreviewService {
   /**
    * 获取链接预览
    */
-  async fetchPreview(url: string): Promise<LinkPreviewResponse | null> {
+  async fetchPreview(url: string, retryCount: number = 0): Promise<LinkPreviewResponse | null> {
     const apiKey = this.getCurrentKey();
     if (!apiKey) {
-      console.log('LinkPreview: 所有API Key配额已用完或未配置');
+      console.log('LinkPreview: 未配置API Key');
       return null;
     }
 
@@ -222,35 +210,44 @@ class LinkPreviewService {
       });
 
       if (!response.ok) {
-        if (response.status === 429) {
-          console.log(`LinkPreview: API Key ${this.currentKeyIndex + 1} 达到速率限制，尝试下一个密钥`);
-          // 标记当前密钥配额已满
-          const quota = this.quotaPerKey.get(apiKey);
-          if (quota) {
-            quota.used = quota.limit;
-            await this.saveQuota();
+        console.log(`LinkPreview: API Key ${this.currentKeyIndex + 1} 请求失败 (${response.status})`);
+        
+        // 如果有其他密钥可用，尝试切换
+        if (this.apiKeys.length > 1 && retryCount < this.apiKeys.length - 1) {
+          const nextKey = this.switchToNextKey();
+          if (nextKey) {
+            console.log(`LinkPreview: 切换到密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length} 重试`);
+            return this.fetchPreview(url, retryCount + 1);
           }
-          // 递增索引并重试
-          this.currentKeyIndex = (this.currentKeyIndex + 1) % this.apiKeys.length;
-          return this.fetchPreview(url);
         }
+        
         throw new Error(`LinkPreview API错误: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json() as LinkPreviewResponse;
       
-      // 更新配额
+      // 成功获取，更新配额
       const quota = this.quotaPerKey.get(apiKey);
       if (quota) {
         quota.used++;
         await this.saveQuota();
       }
       
-      console.log(`LinkPreview: 获取成功 (密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length})，剩余总配额: ${this.getRemainingQuota()}`);
+      console.log(`LinkPreview: 获取成功 (密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length})`);
       
       return data;
     } catch (error) {
-      console.error('LinkPreview API调用失败:', error);
+      console.error(`LinkPreview: 密钥 ${this.currentKeyIndex + 1} 调用失败:`, error);
+      
+      // 如果有其他密钥可用，尝试切换
+      if (this.apiKeys.length > 1 && retryCount < this.apiKeys.length - 1) {
+        const nextKey = this.switchToNextKey();
+        if (nextKey) {
+          console.log(`LinkPreview: 切换到密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length} 重试`);
+          return this.fetchPreview(url, retryCount + 1);
+        }
+      }
+      
       return null;
     }
   }

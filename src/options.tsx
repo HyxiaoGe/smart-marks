@@ -602,16 +602,20 @@ ${examples.join('\n')}
                     LinkPreview API密钥（可选）
                   </label>
                   <textarea
-                    value={apiSettings.linkPreviewKeys?.join('\n') || apiSettings.linkPreviewKey || ''}
+                    value={apiSettings.linkPreviewKeys?.join(', ') || apiSettings.linkPreviewKey || ''}
                     onChange={(e) => {
-                      const keys = e.target.value.split('\n').filter(k => k.trim());
+                      // 支持逗号和换行符分隔
+                      const keys = e.target.value
+                        .split(/[,\n]/)
+                        .map(k => k.trim())
+                        .filter(k => k);
                       setApiSettings(prev => ({ 
                         ...prev, 
                         linkPreviewKey: keys[0] || '',
                         linkPreviewKeys: keys
                       }));
                     }}
-                    placeholder="输入LinkPreview API密钥（每行一个密钥，支持多个密钥轮换）"
+                    placeholder="输入LinkPreview API密钥（使用逗号或换行分隔多个密钥）"
                     style={{
                       width: '100%',
                       padding: '8px',
