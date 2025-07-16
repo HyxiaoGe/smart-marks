@@ -170,8 +170,10 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
  * @param bookmark 书签对象
  * @param metadata 页面元数据
  * @param apiSettings API设置
+ * @param fromFolder 原始文件夹
+ * @param isBatchMode 是否批量模式
  */
-async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, metadata: any, apiSettings: any, fromFolder?: string) {
+async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, metadata: any, apiSettings: any, fromFolder?: string, isBatchMode: boolean = false) {
   try {
     console.log('开始分类书签:', bookmark.title);
     console.log('页面元数据:', metadata);
@@ -195,7 +197,7 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
     
     // 如果置信度高于阈值，则自动分类
     if (result.confidence > 0.7) {
-      await moveBookmarkToCategory(bookmark, result.category);
+      await moveBookmarkToCategory(bookmark, result.category, isBatchMode);
       console.log(`书签已自动分类到: ${result.category} (置信度: ${result.confidence})`);
       
       // 记录到历史
@@ -220,7 +222,7 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
     // 如果AI分类失败，使用备用的简单分类
     const category = await simulateAIClassification(bookmark);
     if (category) {
-      await moveBookmarkToCategory(bookmark, category);
+      await moveBookmarkToCategory(bookmark, category, isBatchMode);
     }
   }
 }
@@ -258,8 +260,9 @@ async function simulateAIClassification(bookmark: chrome.bookmarks.BookmarkTreeN
  * 将书签移动到指定分类文件夹
  * @param bookmark 书签对象
  * @param category 分类名称
+ * @param isBatchMode 是否批量模式
  */
-async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNode, category: string) {
+async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNode, category: string, isBatchMode: boolean = false) {
   try {
     // 检查是否已处理过
     if (bookmark.id && processedBookmarks.has(bookmark.id)) {
@@ -268,7 +271,7 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
     }
     
     // 查找或创建分类文件夹
-    const categoryFolder = await findOrCreateFolder(category);
+    const categoryFolder = await findOrCreateFolder(category, isBatchMode);
     
     // 移动书签到分类文件夹
     if (categoryFolder && bookmark.id) {
@@ -349,9 +352,10 @@ async function testAPIConnection(apiSettings: any) {
 /**
  * 查找或创建文件夹
  * @param folderName 文件夹名称
+ * @param forceSmartFolder 是否强制使用智能分类文件夹
  * @returns 文件夹对象
  */
-async function findOrCreateFolder(folderName: string): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
+async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean = false): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
   try {
     // 获取书签树
     const bookmarkTree = await chrome.bookmarks.getTree();
@@ -380,58 +384,61 @@ async function findOrCreateFolder(folderName: string): Promise<chrome.bookmarks.
       }
     }
     
-    // 在书签栏中查找智能分类文件夹
-    let smartFolder = bookmarkBarNode.children?.find(node => node.title === '智能分类');
-    if (!smartFolder) {
-      // 创建智能分类文件夹
-      smartFolder = await chrome.bookmarks.create({
-        parentId: bookmarkBarNode.id,
-        title: '智能分类'
-      });
+    // 1. 首先在书签栏根目录查找匹配的文件夹
+    let categoryFolder = bookmarkBarNode.children?.find(node => 
+      node.title === folderName && !node.url
+    );
+    
+    if (categoryFolder) {
+      console.log(`使用书签栏中已有的文件夹: ${folderName}`);
+      return categoryFolder;
     }
     
-    // 重新获取smartFolder以确保有最新的children
-    const [updatedSmartFolder] = await chrome.bookmarks.getSubTree(smartFolder.id);
-    smartFolder = updatedSmartFolder;
-    
-    // 在智能分类文件夹中查找指定分类
-    let categoryFolder = smartFolder.children?.find(node => node.title === folderName);
-    if (!categoryFolder) {
-      // 先检查书签栏中是否已经有同名文件夹（可能是手动移出来的）
-      const existingFolderInBar = bookmarkBarNode.children?.find(node => 
-        node.title === folderName && !node.url && node.id !== smartFolder.id
-      );
+    // 2. 在智能分类文件夹中查找（如果存在的话）
+    const smartFolder = bookmarkBarNode.children?.find(node => node.title === '智能分类');
+    if (smartFolder) {
+      // 重新获取smartFolder以确保有最新的children
+      const [updatedSmartFolder] = await chrome.bookmarks.getSubTree(smartFolder.id);
+      categoryFolder = updatedSmartFolder.children?.find(node => node.title === folderName);
       
-      if (existingFolderInBar) {
-        console.log(`发现书签栏中已有同名文件夹"${folderName}"，将其移动到智能分类下`);
-        // 先获取该文件夹中的所有内容
-        const existingBookmarks = await chrome.bookmarks.getChildren(existingFolderInBar.id);
-        
-        // 在智能分类下创建新文件夹
-        categoryFolder = await chrome.bookmarks.create({
-          parentId: smartFolder.id,
-          title: folderName
-        });
-        
-        // 移动所有书签到新文件夹
-        for (const bookmark of existingBookmarks) {
-          await chrome.bookmarks.move(bookmark.id, {
-            parentId: categoryFolder.id
-          });
-        }
-        
-        // 删除原文件夹
-        await chrome.bookmarks.remove(existingFolderInBar.id);
-      } else {
-        // 创建分类文件夹
-        categoryFolder = await chrome.bookmarks.create({
-          parentId: smartFolder.id,
-          title: folderName
-        });
+      if (categoryFolder) {
+        console.log(`使用智能分类中的文件夹: ${folderName}`);
+        return categoryFolder;
       }
     }
     
-    return categoryFolder;
+    // 3. 获取用户的文件夹策略设置
+    const settings = await chrome.storage.sync.get(['apiSettings']);
+    const folderStrategy = settings.apiSettings?.folderStrategy || 'smart';
+    
+    // 4. 检查是否正在批量整理（通过检查是否有智能分类文件夹）
+    const isBatchOrganizing = !!smartFolder || forceSmartFolder;
+    
+    // 5. 决定在哪里创建新文件夹
+    if (folderStrategy === 'always_smart_folder' || isBatchOrganizing) {
+      // 传统模式或批量整理时，使用智能分类文件夹
+      let targetFolder = smartFolder;
+      if (!targetFolder) {
+        // 创建智能分类文件夹
+        targetFolder = await chrome.bookmarks.create({
+          parentId: bookmarkBarNode.id,
+          title: '智能分类'
+        });
+      }
+      
+      console.log(`在智能分类下创建文件夹 "${folderName}"`);
+      return await chrome.bookmarks.create({
+        parentId: targetFolder.id,
+        title: folderName
+      });
+    } else {
+      // 智能模式：单个书签直接在书签栏创建
+      console.log(`智能模式：在书签栏创建文件夹 "${folderName}"`);
+      return await chrome.bookmarks.create({
+        parentId: bookmarkBarNode.id,
+        title: folderName
+      });
+    }
   } catch (error) {
     console.error('创建文件夹失败:', error);
     return null;
@@ -478,6 +485,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
       // 开始新的整理会话
       const sessionId = await organizeHistory.startSession(allBookmarks.length);
+      
+      // 确保智能分类文件夹存在（批量整理时）
+      const bookmarkTree = await chrome.bookmarks.getTree();
+      const bookmarkBarNode = bookmarkTree[0].children?.find(node => node.id === '1');
+      if (bookmarkBarNode && !bookmarkBarNode.children?.find(node => node.title === '智能分类')) {
+        await chrome.bookmarks.create({
+          parentId: bookmarkBarNode.id,
+          title: '智能分类'
+        });
+        console.log('创建智能分类临时文件夹');
+      }
       
       // 获取过滤器设置
       const filterSettings = await loadFilterSettings();
@@ -583,7 +601,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           apiKey,
           linkPreviewKey: apiSettings.linkPreviewKey,
           linkPreviewKeys: apiSettings.linkPreviewKeys 
-        }, fromFolder);
+        }, fromFolder, true);
         // 添加延迟避免过快调用（增加延迟时间以避免LinkPreview API 429错误）
         await new Promise(resolve => setTimeout(resolve, 500));
       }

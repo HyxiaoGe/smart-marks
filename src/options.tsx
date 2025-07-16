@@ -17,6 +17,7 @@ interface APISettings {
   linkPreviewKeys?: string[];
   model: string;
   autoClassify: boolean;
+  folderStrategy?: 'smart' | 'always_smart_folder';
 }
 
 interface BookmarkFolder {
@@ -54,7 +55,8 @@ function OptionsPage() {
     linkPreviewKey: '',
     linkPreviewKeys: [],
     model: '',
-    autoClassify: true
+    autoClassify: true,
+    folderStrategy: 'smart'
   });
   
   const [testingAPI, setTestingAPI] = useState(false);
@@ -480,6 +482,34 @@ ${examples.join('\n')}
             <span>启用AI自动分类（新书签自动整理到合适的文件夹）</span>
           </label>
         </div>
+
+        {apiSettings.autoClassify && (
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
+              文件夹策略
+            </label>
+            <select
+              value={apiSettings.folderStrategy || 'smart'}
+              onChange={(e) => setApiSettings(prev => ({ 
+                ...prev, 
+                folderStrategy: e.target.value as 'smart' | 'always_smart_folder'
+              }))}
+              style={{
+                width: '100%',
+                padding: '8px',
+                fontSize: '14px',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            >
+              <option value="smart">智能模式（新书签直接放到书签栏，批量整理时使用临时文件夹）</option>
+              <option value="always_smart_folder">传统模式（总是使用"智能分类"文件夹）</option>
+            </select>
+            <p style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+              智能模式：单个新书签直接分类到书签栏的文件夹，批量整理时才使用"智能分类"临时文件夹
+            </p>
+          </div>
+        )}
 
         {apiSettings.autoClassify && (
           <>
