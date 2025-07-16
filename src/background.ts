@@ -154,6 +154,10 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
       recentlyCreatedBookmarks.delete(bookmark.id);
     }, 5000);
   }
+  
+  // 可选：添加短暂延迟，让用户有机会手动选择文件夹
+  // 如果用户在这期间移动了书签，插件会跳过处理
+  // await new Promise(resolve => setTimeout(resolve, 1000));
 });
 
 // 监听书签变更事件
@@ -305,6 +309,20 @@ async function simulateAIClassification(bookmark: chrome.bookmarks.BookmarkTreeN
 }
 
 /**
+ * 获取父文件夹名称
+ * @param parentId 父文件夹ID
+ * @returns 父文件夹名称
+ */
+async function getParentFolderName(parentId: string): Promise<string> {
+  try {
+    const [parent] = await chrome.bookmarks.get(parentId);
+    return parent.title || '';
+  } catch (error) {
+    return '';
+  }
+}
+
+/**
  * 将书签移动到指定分类文件夹
  * @param bookmark 书签对象
  * @param category 分类名称
@@ -321,8 +339,13 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
     // 查找或创建分类文件夹
     const categoryFolder = await findOrCreateFolder(category, isBatchMode);
     
-    // 移动书签到分类文件夹
+    // 检查书签是否已经在目标文件夹中
     if (categoryFolder && bookmark.id) {
+      if (bookmark.parentId === categoryFolder.id) {
+        console.log(`书签 "${bookmark.title}" 已经在 "${category}" 文件夹中，无需移动`);
+        return;
+      }
+      
       await chrome.bookmarks.move(bookmark.id, {
         parentId: categoryFolder.id
       });
@@ -332,10 +355,15 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
       processedBookmarks.add(bookmark.id);
       await saveProcessedBookmarks();
       
-      // 显示成功通知
+      // 显示成功通知，包含原始位置信息
+      const fromInfo = bookmark.parentId ? await getParentFolderName(bookmark.parentId) : '';
+      const message = fromInfo && fromInfo !== category 
+        ? `"${bookmark.title}" 已从 "${fromInfo}" 移动到 "${category}" 文件夹`
+        : `"${bookmark.title}" 已移动到 "${category}" 文件夹`;
+      
       await showNotification(
-        '书签已整理',
-        `"${bookmark.title}" 已移动到 "${category}" 文件夹`,
+        '书签已智能分类',
+        message,
         'success'
       );
     }
