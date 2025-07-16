@@ -135,7 +135,20 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
       }
     }
     
-    // 如果不需要过滤，则进行AI分类
+    // 检查书签是否已经在一个有意义的文件夹中（不是书签栏根目录）
+    const parentFolder = await getParentFolderName(bookmark.parentId || '');
+    const isInRootFolder = bookmark.parentId === '1' || bookmark.parentId === '2' || !parentFolder;
+    
+    // 检查是否在智能分类文件夹或其子文件夹中
+    const inSmartFolder = await isInSmartFolder(bookmark);
+    
+    if (!isInRootFolder && parentFolder && parentFolder !== '书签栏' && parentFolder !== 'Bookmarks Bar' && !inSmartFolder) {
+      // 如果用户将书签放在了其他文件夹（非智能分类文件夹），我们仍然进行AI分类
+      // 但会检查AI推荐的文件夹是否与当前文件夹不同
+      console.log(`书签当前在 "${parentFolder}" 文件夹中，将进行AI分类以确认是否需要移动`);
+    }
+    
+    // 总是进行AI分类，除非被过滤
     await classifyBookmark(bookmark, metadata, { 
       ...apiSettings, 
       apiKey,
@@ -330,9 +343,12 @@ async function getParentFolderName(parentId: string): Promise<string> {
  */
 async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNode, category: string, isBatchMode: boolean = false) {
   try {
-    // 检查是否已处理过
-    if (bookmark.id && processedBookmarks.has(bookmark.id)) {
-      console.log(`书签 "${bookmark.title}" 已处理过，跳过`);
+    // 获取当前父文件夹名称
+    const currentParentFolder = bookmark.parentId ? await getParentFolderName(bookmark.parentId) : '';
+    
+    // 检查是否已处理过，但如果当前不在目标文件夹中，仍然需要移动
+    if (bookmark.id && processedBookmarks.has(bookmark.id) && currentParentFolder === category) {
+      console.log(`书签 "${bookmark.title}" 已处理过且在正确的文件夹中，跳过`);
       return;
     }
     
@@ -343,22 +359,30 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
     if (categoryFolder && bookmark.id) {
       if (bookmark.parentId === categoryFolder.id) {
         console.log(`书签 "${bookmark.title}" 已经在 "${category}" 文件夹中，无需移动`);
+        // 仍然记录为已处理
+        if (bookmark.id) {
+          processedBookmarks.add(bookmark.id);
+          await saveProcessedBookmarks();
+        }
         return;
       }
       
+      console.log(`准备移动书签 "${bookmark.title}" 从 "${currentParentFolder}" 到 "${category}"`);
+      
+      // 执行移动操作
       await chrome.bookmarks.move(bookmark.id, {
         parentId: categoryFolder.id
       });
-      console.log(`书签 "${bookmark.title}" 已移动到 "${category}" 文件夹`);
+      
+      console.log(`书签 "${bookmark.title}" 已成功移动到 "${category}" 文件夹`);
       
       // 记录已处理
       processedBookmarks.add(bookmark.id);
       await saveProcessedBookmarks();
       
       // 显示成功通知，包含原始位置信息
-      const fromInfo = bookmark.parentId ? await getParentFolderName(bookmark.parentId) : '';
-      const message = fromInfo && fromInfo !== category 
-        ? `"${bookmark.title}" 已从 "${fromInfo}" 移动到 "${category}" 文件夹`
+      const message = currentParentFolder && currentParentFolder !== category 
+        ? `"${bookmark.title}" 已从 "${currentParentFolder}" 移动到 "${category}" 文件夹`
         : `"${bookmark.title}" 已移动到 "${category}" 文件夹`;
       
       await showNotification(
@@ -366,6 +390,8 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
         message,
         'success'
       );
+    } else {
+      console.error('无法创建或找到目标文件夹:', category);
     }
   } catch (error) {
     console.error('移动书签失败:', error);

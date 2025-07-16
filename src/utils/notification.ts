@@ -10,6 +10,13 @@ let recentNotifications: Array<{
   timestamp: number;
 }> = [];
 
+// 初始化时加载已存储的通知
+chrome.storage.local.get('recentNotifications').then(data => {
+  if (data.recentNotifications) {
+    recentNotifications = data.recentNotifications;
+  }
+});
+
 /**
  * 显示徽章和存储通知（不打扰用户）
  */
@@ -76,6 +83,18 @@ export async function getRecentNotifications() {
 export async function clearNotificationBadge() {
   await chrome.action.setBadgeText({ text: '' });
   await chrome.storage.local.set({ hasUnreadNotifications: false });
+}
+
+/**
+ * 清除所有通知消息
+ */
+export async function clearAllNotifications() {
+  recentNotifications = [];
+  await chrome.storage.local.set({ 
+    recentNotifications: [],
+    hasUnreadNotifications: false 
+  });
+  await chrome.action.setBadgeText({ text: '' });
 }
 
 /**

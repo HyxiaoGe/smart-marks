@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getRecentNotifications, clearNotificationBadge } from './utils/notification';
+import { getRecentNotifications, clearNotificationBadge, clearAllNotifications } from './utils/notification';
 
 /**
  * 主要的弹出窗口组件
@@ -285,9 +285,9 @@ function IndexPopup() {
           }}>
             <h4 style={{ margin: 0, fontSize: '14px' }}>最近消息</h4>
             <button
-              onClick={() => {
+              onClick={async () => {
                 setNotifications([]);
-                chrome.storage.local.set({ recentNotifications: [] });
+                await clearAllNotifications();
               }}
               style={{
                 padding: '2px 8px',
