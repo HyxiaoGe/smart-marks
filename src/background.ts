@@ -54,6 +54,12 @@ chrome.runtime.onInstalled.addListener(() => {
 // 扩展启动时也加载记录
 loadProcessedBookmarks();
 
+// Service Worker 激活时的日志
+console.log('智能书签管理器 Service Worker 已启动', new Date().toLocaleTimeString());
+
+// 用于跟踪最近创建的书签，避免重复处理
+const recentlyCreatedBookmarks = new Set<string>();
+
 // 监听新书签创建事件
 chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   console.log('新书签创建:', bookmark);
@@ -76,21 +82,26 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     return;
   }
   
-  // 如果不是URL书签，跳过
+  // 如果不是URL书签，可能是文件夹或者信息不完整
   if (!bookmark.url) {
-    console.log('不是URL书签，跳过');
-    return;
-  }
-  
-  // 有时候新创建的书签信息不完整，重新获取一次
-  try {
-    const [fullBookmark] = await chrome.bookmarks.get(id);
-    if (fullBookmark) {
-      bookmark = fullBookmark;
-      console.log('重新获取的书签信息:', bookmark);
+    console.log('书签URL为空，等待100ms后重试获取');
+    
+    // 延迟一下再获取，给Chrome时间更新书签信息
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      const [fullBookmark] = await chrome.bookmarks.get(id);
+      if (fullBookmark && fullBookmark.url) {
+        bookmark = fullBookmark;
+        console.log('延迟后获取到完整书签信息:', bookmark);
+      } else {
+        console.log('仍然没有URL，可能是文件夹，跳过');
+        return;
+      }
+    } catch (error) {
+      console.error('重新获取书签信息失败:', error);
+      return;
     }
-  } catch (error) {
-    console.error('重新获取书签信息失败:', error);
   }
   
   // 检查是否应该过滤这个书签
@@ -134,33 +145,70 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   } else {
     console.log(`书签 "${bookmark.title}" 被过滤，不进行AI处理`);
   }
+  
+  // 记录这个书签刚被创建，用于在onChanged事件中识别
+  if (bookmark.id) {
+    recentlyCreatedBookmarks.add(bookmark.id);
+    // 5秒后清除标记，避免内存泄漏
+    setTimeout(() => {
+      recentlyCreatedBookmarks.delete(bookmark.id);
+    }, 5000);
+  }
 });
 
 // 监听书签变更事件
 chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
   console.log('书签更新:', id, changeInfo);
   
+  // 检查是否是刚创建的书签的第一次更新
+  const isRecentlyCreated = recentlyCreatedBookmarks.has(id);
+  if (isRecentlyCreated) {
+    recentlyCreatedBookmarks.delete(id);
+    console.log('这是新创建书签的首次更新，可能包含完整信息');
+  }
+  
   // 如果标题或URL发生变化，可能需要重新分类
-  if (changeInfo.title || changeInfo.url) {
+  if (changeInfo.title || changeInfo.url || isRecentlyCreated) {
     const settings = await chrome.storage.sync.get(['apiSettings']);
     const apiSettings = settings.apiSettings;
     
     const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
     
     if (!apiSettings?.autoClassify || !apiKey) {
+      console.log('书签更新：AI自动分类未启用或未配置API');
       return;
     }
     
-    const bookmark = await chrome.bookmarks.get(id);
-    if (bookmark.length > 0 && bookmark[0].url) {
+    const [bookmark] = await chrome.bookmarks.get(id);
+    if (bookmark && bookmark.url) {
+      console.log('准备对更新后的书签进行分类:', bookmark);
+      
+      // 检查是否已经在智能分类文件夹中
+      const inSmartFolder = await isInSmartFolder(bookmark);
+      if (inSmartFolder) {
+        console.log('书签已在智能分类文件夹中，跳过');
+        return;
+      }
+      
+      // 获取原始位置
+      let fromFolder = '';
+      if (bookmark.parentId) {
+        try {
+          const [parent] = await chrome.bookmarks.get(bookmark.parentId);
+          fromFolder = parent.title || '';
+        } catch (e) {
+          // 忽略错误
+        }
+      }
+      
       // 尝试获取页面元数据
-      const metadata = pageMetadataCache.get(bookmark[0].url);
-      await classifyBookmark(bookmark[0], metadata, { 
+      const metadata = pageMetadataCache.get(bookmark.url);
+      await classifyBookmark(bookmark, metadata, { 
         ...apiSettings, 
         apiKey,
         linkPreviewKey: apiSettings.linkPreviewKey,
         linkPreviewKeys: apiSettings.linkPreviewKeys 
-      });
+      }, fromFolder);
     }
   }
 });
