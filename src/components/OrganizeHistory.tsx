@@ -156,7 +156,7 @@ export function OrganizeHistory() {
       <h3 style={{ marginBottom: '15px' }}>📊 整理进度与历史</h3>
       
       {/* 当前整理会话 */}
-      {currentSession && currentSession.status === 'running' && (
+      {currentSession && (currentSession.status === 'running' || currentSession.status === 'paused') && (
         <div style={{
           backgroundColor: '#e3f2fd',
           border: '1px solid #90caf9',
@@ -164,7 +164,9 @@ export function OrganizeHistory() {
           padding: '15px',
           marginBottom: '20px'
         }}>
-          <h4 style={{ margin: '0 0 10px 0' }}>正在整理中...</h4>
+          <h4 style={{ margin: '0 0 10px 0' }}>
+            {currentSession.status === 'running' ? '正在整理中...' : '⏸️ 整理已暂停'}
+          </h4>
           <div style={{ marginBottom: '10px' }}>
             <div style={{ 
               display: 'flex', 

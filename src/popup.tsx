@@ -11,7 +11,7 @@ function IndexPopup() {
     current: number;
     total: number;
     currentBookmark: string;
-    status: 'idle' | 'processing' | 'completed' | 'error';
+    status: 'idle' | 'processing' | 'completed' | 'error' | 'paused';
   }>({
     current: 0,
     total: 0,
@@ -77,6 +77,13 @@ function IndexPopup() {
           ...prev,
           status: 'error'
         }));
+      } else if (message.type === 'ORGANIZE_PAUSED') {
+        setOrganizingProgress(prev => ({
+          ...prev,
+          current: message.current,
+          total: message.total,
+          status: 'paused'
+        }));
       }
     };
 
@@ -85,6 +92,18 @@ function IndexPopup() {
       chrome.runtime.onMessage.removeListener(handleMessage);
     };
   }, []);
+
+  // 处理暂停整理
+  const handlePauseOrganize = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'PAUSE_ORGANIZE' });
+      if (response.success) {
+        console.log('整理已暂停');
+      }
+    } catch (error) {
+      console.error('暂停失败:', error);
+    }
+  };
 
   // 处理智能整理按钮点击
   const handleSmartOrganize = async () => {
@@ -269,11 +288,47 @@ function IndexPopup() {
                 }}>
                   正在处理: {organizingProgress.currentBookmark}
                 </div>
+                <button
+                  onClick={handlePauseOrganize}
+                  style={{
+                    marginTop: '8px',
+                    padding: '4px 12px',
+                    backgroundColor: '#ff9800',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ⏸️ 暂停整理
+                </button>
               </>
             )}
             {organizingProgress.status === 'completed' && (
               <div style={{ color: '#4CAF50', textAlign: 'center' }}>
                 ✓ 智能整理完成！已处理 {organizingProgress.total} 个书签
+              </div>
+            )}
+            {organizingProgress.status === 'paused' && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ color: '#ff9800', marginBottom: '8px' }}>
+                  ⏸️ 整理已暂停（已处理 {organizingProgress.current} / {organizingProgress.total}）
+                </div>
+                <button
+                  onClick={handleSmartOrganize}
+                  style={{
+                    padding: '4px 12px',
+                    backgroundColor: '#4CAF50',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ▶️ 重新开始整理
+                </button>
               </div>
             )}
             {organizingProgress.status === 'error' && (

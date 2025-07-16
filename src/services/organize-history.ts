@@ -22,8 +22,10 @@ export interface OrganizeSession {
   endTime?: number;
   totalBookmarks: number;
   processedBookmarks: number;
-  status: 'running' | 'completed' | 'cancelled' | 'error';
+  status: 'running' | 'completed' | 'cancelled' | 'error' | 'paused';
   records: OrganizeRecord[];
+  pausedAt?: number;
+  remainingBookmarkIds?: string[];
 }
 
 class OrganizeHistoryService {
@@ -81,9 +83,28 @@ class OrganizeHistoryService {
   }
 
   /**
+   * 暂停当前会话
+   */
+  async pauseSession(remainingBookmarkIds: string[]): Promise<void> {
+    if (!this.currentSession) return;
+    
+    this.currentSession.status = 'paused';
+    this.currentSession.pausedAt = Date.now();
+    this.currentSession.remainingBookmarkIds = remainingBookmarkIds;
+    
+    await this.saveCurrentSession();
+    
+    // 广播暂停状态
+    chrome.runtime.sendMessage({
+      type: 'ORGANIZE_PAUSED',
+      session: this.currentSession
+    }).catch(() => {});
+  }
+  
+  /**
    * 结束整理会话
    */
-  async endSession(status: 'completed' | 'cancelled' | 'error' = 'completed'): Promise<void> {
+  async endSession(status: 'completed' | 'cancelled' | 'error' | 'paused' = 'completed'): Promise<void> {
     if (!this.currentSession) return;
     
     this.currentSession.endTime = Date.now();

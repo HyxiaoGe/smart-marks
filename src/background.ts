@@ -57,12 +57,19 @@ loadProcessedBookmarks();
 // 监听新书签创建事件
 chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   console.log('新书签创建:', bookmark);
+  console.log('书签ID:', id);
+  console.log('书签URL:', bookmark.url);
+  console.log('书签标题:', bookmark.title);
   
   // 检查是否启用自动分类和API配置
   const settings = await chrome.storage.sync.get(['apiSettings', 'filterSettings']);
+  console.log('获取到的设置:', settings);
   const apiSettings = settings.apiSettings;
   
   const apiKey = apiSettings?.provider === 'openai' ? apiSettings.openaiKey : apiSettings?.geminiKey;
+  console.log('API提供商:', apiSettings?.provider);
+  console.log('自动分类开关:', apiSettings?.autoClassify);
+  console.log('API密钥存在:', !!apiKey);
   
   if (!apiSettings?.autoClassify || !apiKey) {
     console.log('AI自动分类未启用或未配置API');
@@ -71,7 +78,19 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   
   // 如果不是URL书签，跳过
   if (!bookmark.url) {
+    console.log('不是URL书签，跳过');
     return;
+  }
+  
+  // 有时候新创建的书签信息不完整，重新获取一次
+  try {
+    const [fullBookmark] = await chrome.bookmarks.get(id);
+    if (fullBookmark) {
+      bookmark = fullBookmark;
+      console.log('重新获取的书签信息:', bookmark);
+    }
+  } catch (error) {
+    console.error('重新获取书签信息失败:', error);
   }
   
   // 检查是否应该过滤这个书签
@@ -94,12 +113,24 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
       }
     }
     
+    // 获取原始位置
+    let fromFolder = '';
+    if (bookmark.parentId) {
+      try {
+        const [parent] = await chrome.bookmarks.get(bookmark.parentId);
+        fromFolder = parent.title || '';
+      } catch (e) {
+        // 忽略错误
+      }
+    }
+    
     // 如果不需要过滤，则进行AI分类
     await classifyBookmark(bookmark, metadata, { 
       ...apiSettings, 
       apiKey,
-      linkPreviewKey: apiSettings.linkPreviewKey 
-    });
+      linkPreviewKey: apiSettings.linkPreviewKey,
+      linkPreviewKeys: apiSettings.linkPreviewKeys 
+    }, fromFolder);
   } else {
     console.log(`书签 "${bookmark.title}" 被过滤，不进行AI处理`);
   }
@@ -127,7 +158,8 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
       await classifyBookmark(bookmark[0], metadata, { 
         ...apiSettings, 
         apiKey,
-        linkPreviewKey: apiSettings.linkPreviewKey 
+        linkPreviewKey: apiSettings.linkPreviewKey,
+        linkPreviewKeys: apiSettings.linkPreviewKeys 
       });
     }
   }
@@ -139,7 +171,7 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
  * @param metadata 页面元数据
  * @param apiSettings API设置
  */
-async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, metadata: any, apiSettings: any) {
+async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, metadata: any, apiSettings: any, fromFolder?: string) {
   try {
     console.log('开始分类书签:', bookmark.title);
     console.log('页面元数据:', metadata);
@@ -171,7 +203,7 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
         bookmarkId: bookmark.id!,
         bookmarkTitle: bookmark.title,
         bookmarkUrl: bookmark.url!,
-        fromFolder: '',
+        fromFolder: fromFolder || '',
         toFolder: result.category,
         timestamp: Date.now(),
         confidence: result.confidence,
@@ -406,6 +438,10 @@ async function findOrCreateFolder(folderName: string): Promise<chrome.bookmarks.
   }
 }
 
+// 用于控制整理过程的全局变量
+let isOrganizePaused = false;
+let currentOrganizeBookmarks: chrome.bookmarks.BookmarkTreeNode[] = [];
+
 // 监听来自内容脚本和其他页面的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'PAGE_METADATA' && sender.tab?.url) {
@@ -486,8 +522,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         'info'
       );
       
+      // 保存当前要整理的书签列表
+      currentOrganizeBookmarks = bookmarksToOrganize;
+      isOrganizePaused = false;
+      
       // 批量分类
       for (let i = 0; i < bookmarksToOrganize.length; i++) {
+        // 检查是否暂停
+        if (isOrganizePaused) {
+          console.log('整理已暂停，位置:', i);
+          
+          // 获取剩余未处理的书签ID
+          const remainingBookmarkIds = bookmarksToOrganize.slice(i).map(b => b.id).filter(id => id) as string[];
+          
+          // 暂停会话
+          await organizeHistory.pauseSession(remainingBookmarkIds);
+          
+          // 发送暂停消息到popup
+          chrome.runtime.sendMessage({
+            type: 'ORGANIZE_PAUSED',
+            current: i,
+            total: bookmarksToOrganize.length
+          }).catch(() => {});
+          
+          sendResponse({ success: false, paused: true, processed: i });
+          return;
+        }
+        
         const bookmark = bookmarksToOrganize[i];
         
         // 显示进度
@@ -520,7 +581,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await classifyBookmark(bookmark, metadata, { 
           ...apiSettings, 
           apiKey,
-          linkPreviewKey: apiSettings.linkPreviewKey 
+          linkPreviewKey: apiSettings.linkPreviewKey,
+          linkPreviewKeys: apiSettings.linkPreviewKeys 
         }, fromFolder);
         // 添加延迟避免过快调用（增加延迟时间以避免LinkPreview API 429错误）
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -601,7 +663,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await classifyBookmark(bookmark, metadata, { 
             ...apiSettings, 
             apiKey,
-            linkPreviewKey: apiSettings.linkPreviewKey 
+            linkPreviewKey: apiSettings.linkPreviewKey,
+            linkPreviewKeys: apiSettings.linkPreviewKeys 
           });
           // 添加延迟避免过快调用
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -677,7 +740,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               provider: apiSettings.provider,
               apiKey: apiKey,
               model: apiSettings.model,
-              linkPreviewKey: apiSettings.linkPreviewKey 
+              linkPreviewKey: apiSettings.linkPreviewKey,
+              linkPreviewKeys: apiSettings.linkPreviewKeys 
             });
             previewResults.push({
               bookmark: {
@@ -803,6 +867,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     })();
     return true;
+  } else if (request.type === 'PAUSE_ORGANIZE') {
+    // 暂停整理
+    isOrganizePaused = true;
+    sendResponse({ success: true });
+    return false;
+  } else if (request.type === 'RESUME_ORGANIZE') {
+    // 恢复整理（重新开始）
+    chrome.runtime.sendMessage({ action: 'batchOrganize' });
+    sendResponse({ success: true });
+    return false;
   }
   return false;
 });

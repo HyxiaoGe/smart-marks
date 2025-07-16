@@ -214,6 +214,7 @@ export async function classifyBookmark(
     apiKey: string;
     model: string;
     linkPreviewKey?: string;
+    linkPreviewKeys?: string[];
   }
 ): Promise<ClassificationResult> {
   console.log('开始智能分类:', bookmarkInfo.url);
@@ -250,19 +251,36 @@ export async function classifyBookmark(
   }
   
   // 3. 尝试使用 LinkPreview API 获取元数据（如果配置了）
-  if (apiSettings.linkPreviewKey && !bookmarkInfo.description) {
-    linkPreviewService.setApiKey(apiSettings.linkPreviewKey);
-    
-    if (linkPreviewService.hasQuota()) {
-      const preview = await linkPreviewService.fetchPreview(bookmarkInfo.url);
-      if (preview) {
-        console.log('使用LinkPreview获取的元数据:', preview.description);
-        bookmarkInfo.description = preview.description;
-        bookmarkInfo.title = preview.title || bookmarkInfo.title;
+  if (!bookmarkInfo.description) {
+    if (apiSettings.linkPreviewKeys?.length > 0) {
+      linkPreviewService.setApiKeys(apiSettings.linkPreviewKeys);
+      
+      if (linkPreviewService.hasQuota()) {
+        const preview = await linkPreviewService.fetchPreview(bookmarkInfo.url);
+        if (preview) {
+          console.log('使用LinkPreview获取的元数据:', preview.description);
+          bookmarkInfo.description = preview.description;
+          bookmarkInfo.title = preview.title || bookmarkInfo.title;
+        }
+      } else {
+        const quotaInfo = linkPreviewService.getQuotaInfo();
+        console.log(`LinkPreview配额已用完（${quotaInfo.keyCount}个密钥），${quotaInfo.resetIn}分钟后重置`);
       }
-    } else {
-      const quotaInfo = linkPreviewService.getQuotaInfo();
-      console.log(`LinkPreview配额已用完，${quotaInfo.resetIn}分钟后重置`);
+    } else if (apiSettings.linkPreviewKey) {
+      // 向后兼容单个密钥
+      linkPreviewService.setApiKey(apiSettings.linkPreviewKey);
+      
+      if (linkPreviewService.hasQuota()) {
+        const preview = await linkPreviewService.fetchPreview(bookmarkInfo.url);
+        if (preview) {
+          console.log('使用LinkPreview获取的元数据:', preview.description);
+          bookmarkInfo.description = preview.description;
+          bookmarkInfo.title = preview.title || bookmarkInfo.title;
+        }
+      } else {
+        const quotaInfo = linkPreviewService.getQuotaInfo();
+        console.log(`LinkPreview配额已用完，${quotaInfo.resetIn}分钟后重置`);
+      }
     }
   }
   

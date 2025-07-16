@@ -14,6 +14,7 @@ interface APISettings {
   openaiKey?: string;
   geminiKey?: string;
   linkPreviewKey?: string;
+  linkPreviewKeys?: string[];
   model: string;
   autoClassify: boolean;
 }
@@ -51,6 +52,7 @@ function OptionsPage() {
     openaiKey: '',
     geminiKey: '',
     linkPreviewKey: '',
+    linkPreviewKeys: [],
     model: '',
     autoClassify: true
   });
@@ -599,25 +601,30 @@ ${examples.join('\n')}
                   <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
                     LinkPreview API密钥（可选）
                   </label>
-                  <input
-                    type={showApiKey ? "text" : "password"}
-                    value={apiSettings.linkPreviewKey || ''}
-                    onChange={(e) => setApiSettings(prev => ({ 
-                      ...prev, 
-                      linkPreviewKey: e.target.value 
-                    }))}
-                    placeholder="输入LinkPreview API密钥以获取更准确的页面信息"
+                  <textarea
+                    value={apiSettings.linkPreviewKeys?.join('\n') || apiSettings.linkPreviewKey || ''}
+                    onChange={(e) => {
+                      const keys = e.target.value.split('\n').filter(k => k.trim());
+                      setApiSettings(prev => ({ 
+                        ...prev, 
+                        linkPreviewKey: keys[0] || '',
+                        linkPreviewKeys: keys
+                      }));
+                    }}
+                    placeholder="输入LinkPreview API密钥（每行一个密钥，支持多个密钥轮换）"
                     style={{
                       width: '100%',
                       padding: '8px',
                       fontSize: '14px',
                       border: '1px solid #ddd',
-                      borderRadius: '4px'
+                      borderRadius: '4px',
+                      minHeight: '60px',
+                      resize: 'vertical'
                     }}
                   />
                   <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
                     <span>获取API密钥：<a href="https://my.linkpreview.net" target="_blank" rel="noopener noreferrer">LinkPreview</a></span>
-                    <span style={{ marginLeft: '10px' }}>（免费计划：60次/小时）</span>
+                    <span style={{ marginLeft: '10px' }}>（免费计划：60次/小时，支持多个密钥轮换）</span>
                   </div>
                 </div>
 
