@@ -26,18 +26,16 @@ export function OrganizeHistory() {
     
     chrome.runtime.onMessage.addListener(handleHistoryUpdate);
     
-    // 定期刷新当前会话
+    // 定期刷新数据（无论是否有正在运行的会话）
     const interval = setInterval(() => {
-      if (currentSession?.status === 'running') {
-        loadData();
-      }
+      loadData();
     }, 2000);
     
     return () => {
       chrome.runtime.onMessage.removeListener(handleHistoryUpdate);
       clearInterval(interval);
     };
-  }, [currentSession?.status]);
+  }, []);
 
   const loadData = async () => {
     try {
@@ -130,14 +128,19 @@ export function OrganizeHistory() {
 
   const moveBookmark = async (bookmarkId: string, newCategory: string) => {
     try {
-      await chrome.runtime.sendMessage({
+      const response = await chrome.runtime.sendMessage({
         action: 'moveBookmark',
         bookmarkId,
         category: newCategory
       });
       
-      alert(`已移动到"${newCategory}"文件夹`);
-      loadData();
+      if (response.success) {
+        alert(`已移动到"${newCategory}"文件夹`);
+        // 立即刷新数据
+        setTimeout(() => loadData(), 500);
+      } else {
+        alert(`移动失败: ${response.error || '未知错误'}`);
+      }
     } catch (error) {
       console.error('移动失败:', error);
       alert('移动失败');

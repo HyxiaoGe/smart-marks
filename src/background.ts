@@ -358,14 +358,45 @@ async function findOrCreateFolder(folderName: string): Promise<chrome.bookmarks.
       });
     }
     
+    // 重新获取smartFolder以确保有最新的children
+    const [updatedSmartFolder] = await chrome.bookmarks.getSubTree(smartFolder.id);
+    smartFolder = updatedSmartFolder;
+    
     // 在智能分类文件夹中查找指定分类
     let categoryFolder = smartFolder.children?.find(node => node.title === folderName);
     if (!categoryFolder) {
-      // 创建分类文件夹
-      categoryFolder = await chrome.bookmarks.create({
-        parentId: smartFolder.id,
-        title: folderName
-      });
+      // 先检查书签栏中是否已经有同名文件夹（可能是手动移出来的）
+      const existingFolderInBar = bookmarkBarNode.children?.find(node => 
+        node.title === folderName && !node.url && node.id !== smartFolder.id
+      );
+      
+      if (existingFolderInBar) {
+        console.log(`发现书签栏中已有同名文件夹"${folderName}"，将其移动到智能分类下`);
+        // 先获取该文件夹中的所有内容
+        const existingBookmarks = await chrome.bookmarks.getChildren(existingFolderInBar.id);
+        
+        // 在智能分类下创建新文件夹
+        categoryFolder = await chrome.bookmarks.create({
+          parentId: smartFolder.id,
+          title: folderName
+        });
+        
+        // 移动所有书签到新文件夹
+        for (const bookmark of existingBookmarks) {
+          await chrome.bookmarks.move(bookmark.id, {
+            parentId: categoryFolder.id
+          });
+        }
+        
+        // 删除原文件夹
+        await chrome.bookmarks.remove(existingFolderInBar.id);
+      } else {
+        // 创建分类文件夹
+        categoryFolder = await chrome.bookmarks.create({
+          parentId: smartFolder.id,
+          title: folderName
+        });
+      }
     }
     
     return categoryFolder;
@@ -684,7 +715,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const bookmark = await chrome.bookmarks.get(request.bookmarkId);
         if (bookmark.length > 0) {
+          // 获取原始位置
+          let fromFolder = '';
+          if (bookmark[0].parentId) {
+            try {
+              const [parent] = await chrome.bookmarks.get(bookmark[0].parentId);
+              fromFolder = parent.title || '';
+            } catch (e) {
+              // 忽略错误
+            }
+          }
+          
           await moveBookmarkToCategory(bookmark[0], request.category);
+          
+          // 记录到历史
+          await organizeHistory.addRecord({
+            bookmarkId: bookmark[0].id!,
+            bookmarkTitle: bookmark[0].title,
+            bookmarkUrl: bookmark[0].url!,
+            fromFolder,
+            toFolder: request.category,
+            timestamp: Date.now(),
+            confidence: 1.0,
+            reasoning: '手动移动',
+            status: 'completed'
+          });
+          
           sendResponse({ success: true });
         } else {
           sendResponse({ success: false, error: '书签不存在' });

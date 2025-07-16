@@ -834,26 +834,6 @@ ${examples.join('\n')}
           </>
         )}
       </div>
-
-      {/* 整理历史和进度 */}
-      <div style={{ 
-        backgroundColor: '#f9f9f9', 
-        padding: '20px', 
-        borderRadius: '8px', 
-        marginBottom: '20px' 
-      }}>
-        <OrganizeHistory />
-      </div>
-      
-      {/* 文件夹管理 */}
-      <div style={{ 
-        backgroundColor: '#f9f9f9', 
-        padding: '20px', 
-        borderRadius: '8px', 
-        marginBottom: '20px' 
-      }}>
-        <FolderManager />
-      </div>
       
       {/* 保存按钮 */}
       <div style={{ textAlign: 'center', marginTop: '30px' }}>
@@ -889,6 +869,27 @@ ${examples.join('\n')}
             <span style={{ color: '#f44336' }}>✗ 同步失败，请重试</span>
           )}
         </div>
+      </div>
+
+      {/* 整理历史和进度 */}
+      <div style={{ 
+        backgroundColor: '#f9f9f9', 
+        padding: '20px', 
+        borderRadius: '8px', 
+        marginBottom: '20px',
+        marginTop: '30px'
+      }}>
+        <OrganizeHistory />
+      </div>
+      
+      {/* 文件夹管理 */}
+      <div style={{ 
+        backgroundColor: '#f9f9f9', 
+        padding: '20px', 
+        borderRadius: '8px', 
+        marginBottom: '20px' 
+      }}>
+        <FolderManager />
       </div>
 
       {/* 使用说明 */}
