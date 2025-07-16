@@ -60,6 +60,9 @@ console.log('智能书签管理器 Service Worker 已启动', new Date().toLocal
 // 用于跟踪最近创建的书签，避免重复处理
 const recentlyCreatedBookmarks = new Set<string>();
 
+// 用于跟踪正在移动的书签，避免竞态条件
+const movingBookmarks = new Set<string>();
+
 // 监听新书签创建事件
 chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   console.log('新书签创建:', bookmark);
@@ -165,6 +168,15 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     // 5秒后清除标记，避免内存泄漏
     setTimeout(() => {
       recentlyCreatedBookmarks.delete(bookmark.id);
+      
+      // 最终验证：5秒后再次检查书签位置
+      chrome.bookmarks.get(bookmark.id).then(([finalBookmark]) => {
+        getParentFolderName(finalBookmark.parentId).then(finalFolder => {
+          console.log(`[5秒后最终验证] 书签 "${finalBookmark.title}" 最终位于: "${finalFolder}" 文件夹`);
+        });
+      }).catch(err => {
+        console.log('5秒后书签可能已被删除');
+      });
     }, 5000);
   }
   
@@ -173,9 +185,36 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
   // await new Promise(resolve => setTimeout(resolve, 1000));
 });
 
+// 监听书签移动事件
+chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
+  console.log('检测到书签移动事件:', {
+    bookmarkId: id,
+    oldParentId: moveInfo.oldParentId,
+    oldIndex: moveInfo.oldIndex,
+    parentId: moveInfo.parentId,
+    index: moveInfo.index
+  });
+  
+  // 获取书签信息
+  try {
+    const [bookmark] = await chrome.bookmarks.get(id);
+    const oldParentName = await getParentFolderName(moveInfo.oldParentId);
+    const newParentName = await getParentFolderName(moveInfo.parentId);
+    
+    console.log('书签移动详情:', {
+      title: bookmark.title,
+      url: bookmark.url,
+      从: oldParentName,
+      到: newParentName
+    });
+  } catch (error) {
+    console.error('获取移动书签信息失败:', error);
+  }
+});
+
 // 监听书签变更事件
 chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
-  console.log('书签更新:', id, changeInfo);
+  console.log('书签更新事件触发:', id, changeInfo);
   
   // 检查是否是刚创建的书签的第一次更新
   const isRecentlyCreated = recentlyCreatedBookmarks.has(id);
@@ -347,12 +386,36 @@ async function getParentFolderName(parentId: string): Promise<string> {
  */
 async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNode, category: string, isBatchMode: boolean = false) {
   try {
+    console.log('\n========== 开始移动书签 ==========');
+    console.log('书签信息:', {
+      id: bookmark.id,
+      title: bookmark.title,
+      url: bookmark.url,
+      parentId: bookmark.parentId
+    });
+    console.log('目标分类:', category);
+    
+    // 检查是否正在移动中
+    if (bookmark.id && movingBookmarks.has(bookmark.id)) {
+      console.log(`书签 "${bookmark.title}" 正在移动中，跳过避免竞态条件`);
+      console.log('========== 结束移动书签（正在移动） ==========\n');
+      return;
+    }
+    
+    // 标记开始移动
+    if (bookmark.id) {
+      movingBookmarks.add(bookmark.id);
+    }
+    
     // 获取当前父文件夹名称
     const currentParentFolder = bookmark.parentId ? await getParentFolderName(bookmark.parentId) : '';
+    console.log('当前所在文件夹:', currentParentFolder);
     
     // 检查是否已处理过，但如果当前不在目标文件夹中，仍然需要移动
     if (bookmark.id && processedBookmarks.has(bookmark.id) && currentParentFolder === category) {
       console.log(`书签 "${bookmark.title}" 已处理过且在正确的文件夹中，跳过`);
+      console.log('========== 结束移动书签（跳过） ==========\n');
+      if (bookmark.id) movingBookmarks.delete(bookmark.id);
       return;
     }
     
@@ -372,18 +435,38 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
       }
       
       console.log(`准备移动书签 "${bookmark.title}" 从 "${currentParentFolder}" 到 "${category}"`);
+      console.log('目标文件夹ID:', categoryFolder.id);
       
       // 执行移动操作
+      console.log('正在执行 chrome.bookmarks.move...');
       const movedBookmark = await chrome.bookmarks.move(bookmark.id, {
         parentId: categoryFolder.id
       });
       
-      console.log(`书签 "${bookmark.title}" 已成功移动到 "${category}" 文件夹`);
-      console.log('移动后的书签信息:', movedBookmark);
+      console.log('移动操作完成，返回的书签信息:', movedBookmark);
+      
+      // 延时100ms后验证
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // 验证移动是否成功
       const [verifyBookmark] = await chrome.bookmarks.get(bookmark.id);
-      console.log('验证移动结果 - 当前父文件夹ID:', verifyBookmark.parentId, '目标文件夹ID:', categoryFolder.id);
+      console.log('验证移动结果:');
+      console.log('  - 书签当前父文件夹ID:', verifyBookmark.parentId);
+      console.log('  - 目标文件夹ID:', categoryFolder.id);
+      console.log('  - 移动是否成功:', verifyBookmark.parentId === categoryFolder.id);
+      
+      // 获取实际父文件夹名称
+      const actualParentName = await getParentFolderName(verifyBookmark.parentId);
+      console.log('  - 实际所在文件夹名称:', actualParentName);
+      
+      // 再次延时验证
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const [finalVerifyBookmark] = await chrome.bookmarks.get(bookmark.id);
+      const finalParentName = await getParentFolderName(finalVerifyBookmark.parentId);
+      console.log('300ms后最终验证:');
+      console.log('  - 最终父文件夹ID:', finalVerifyBookmark.parentId);
+      console.log('  - 最终文件夹名称:', finalParentName);
+      console.log('  - 最终是否在目标文件夹:', finalParentName === category);
       
       // 记录已处理
       processedBookmarks.add(bookmark.id);
@@ -399,11 +482,34 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
         message,
         'success'
       );
+      console.log('========== 结束移动书签（成功） ==========\n');
+      
+      // 清除移动标记
+      if (bookmark.id) {
+        movingBookmarks.delete(bookmark.id);
+      }
     } else {
       console.error('无法创建或找到目标文件夹:', category);
+      console.log('========== 结束移动书签（失败） ==========\n');
+      
+      // 清除移动标记
+      if (bookmark.id) {
+        movingBookmarks.delete(bookmark.id);
+      }
     }
   } catch (error) {
     console.error('移动书签失败:', error);
+    console.log('错误详情:', {
+      errorMessage: error instanceof Error ? error.message : '未知错误',
+      errorStack: error instanceof Error ? error.stack : ''
+    });
+    console.log('========== 结束移动书签（异常） ==========\n');
+    
+    // 清除移动标记
+    if (bookmark.id) {
+      movingBookmarks.delete(bookmark.id);
+    }
+    
     await showNotification(
       '整理失败',
       `无法移动书签 "${bookmark.title}": ${error instanceof Error ? error.message : '未知错误'}`,
@@ -468,6 +574,8 @@ async function testAPIConnection(apiSettings: any) {
  */
 async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean = false): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
   try {
+    console.log(`\\n[findOrCreateFolder] 开始查找或创建文件夹: "${folderName}", forceSmartFolder: ${forceSmartFolder}`);
+    
     // 获取书签树
     const bookmarkTree = await chrome.bookmarks.getTree();
     
@@ -501,7 +609,7 @@ async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean 
     );
     
     if (categoryFolder) {
-      console.log(`使用书签栏中已有的文件夹: ${folderName}`);
+      console.log(`[findOrCreateFolder] 在书签栏找到已有文件夹: "${folderName}" (ID: ${categoryFolder.id})`);
       return categoryFolder;
     }
     
@@ -537,11 +645,13 @@ async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean 
         });
       }
       
-      console.log(`在智能分类下创建文件夹 "${folderName}"`);
-      return await chrome.bookmarks.create({
+      console.log(`[findOrCreateFolder] 在智能分类下创建文件夹 "${folderName}"`);
+      const newFolder = await chrome.bookmarks.create({
         parentId: targetFolder.id,
         title: folderName
       });
+      console.log(`[findOrCreateFolder] 创建成功，新文件夹ID: ${newFolder.id}`);
+      return newFolder;
     } else {
       // 智能模式：单个书签直接在书签栏创建
       console.log(`智能模式：在书签栏创建文件夹 "${folderName}"`);
