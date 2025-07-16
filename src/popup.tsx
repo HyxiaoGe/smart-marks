@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getRecentNotifications, clearNotificationBadge } from './utils/notification';
 
 /**
  * 主要的弹出窗口组件
@@ -7,6 +8,8 @@ import React, { useState, useEffect } from 'react';
 function IndexPopup() {
   const [bookmarkCount, setBookmarkCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
+  const [showNotifications, setShowNotifications] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [organizingProgress, setOrganizingProgress] = useState<{
     current: number;
     total: number;
@@ -46,6 +49,16 @@ function IndexPopup() {
     };
 
     fetchBookmarkCount();
+    
+    // 同时加载通知
+    getRecentNotifications().then(setNotifications);
+    
+    // 检查是否有未读通知
+    chrome.storage.local.get('hasUnreadNotifications').then(data => {
+      if (data.hasUnreadNotifications) {
+        setShowNotifications(true);
+      }
+    });
   }, []);
 
   // 监听进度更新
@@ -196,17 +209,123 @@ function IndexPopup() {
       backgroundColor: '#f5f5f5'
     }}>
       <div style={{ 
-        textAlign: 'center', 
         marginBottom: '20px',
         color: '#333'
       }}>
-        <h2 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>
-          🔖 智能书签管理器
-        </h2>
-        <p style={{ margin: '0', fontSize: '14px', color: '#666' }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '10px'
+        }}>
+          <h2 style={{ margin: '0', fontSize: '18px' }}>
+            🔖 智能书签管理器
+          </h2>
+          
+          {/* 通知按钮 */}
+          <button
+            onClick={() => {
+              setShowNotifications(!showNotifications);
+              if (!showNotifications) {
+                clearNotificationBadge();
+              }
+            }}
+            style={{
+              position: 'relative',
+              padding: '4px 8px',
+              backgroundColor: notifications.length > 0 ? '#2196F3' : '#f0f0f0',
+              color: notifications.length > 0 ? 'white' : '#666',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.3s'
+            }}
+          >
+            🔔 消息
+            {notifications.length > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '-5px',
+                right: '-5px',
+                backgroundColor: '#f44336',
+                color: 'white',
+                borderRadius: '10px',
+                padding: '2px 6px',
+                fontSize: '10px',
+                fontWeight: 'bold'
+              }}>
+                {notifications.length}
+              </span>
+            )}
+          </button>
+        </div>
+        
+        <p style={{ margin: '0', fontSize: '14px', color: '#666', textAlign: 'center' }}>
           让AI帮你整理书签
         </p>
       </div>
+      
+      {/* 通知列表 */}
+      {showNotifications && notifications.length > 0 && (
+        <div style={{
+          marginBottom: '15px',
+          padding: '10px',
+          backgroundColor: '#f9f9f9',
+          borderRadius: '5px',
+          maxHeight: '200px',
+          overflowY: 'auto',
+          border: '1px solid #e0e0e0'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '10px'
+          }}>
+            <h4 style={{ margin: 0, fontSize: '14px' }}>最近消息</h4>
+            <button
+              onClick={() => {
+                setNotifications([]);
+                chrome.storage.local.set({ recentNotifications: [] });
+              }}
+              style={{
+                padding: '2px 8px',
+                backgroundColor: '#ff9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '3px',
+                fontSize: '11px',
+                cursor: 'pointer'
+              }}
+            >
+              清空
+            </button>
+          </div>
+          {notifications.slice().reverse().map((notification, index) => (
+            <div key={index} style={{
+              padding: '8px',
+              marginBottom: '5px',
+              backgroundColor: 'white',
+              borderRadius: '4px',
+              borderLeft: `3px solid ${
+                notification.type === 'success' ? '#4CAF50' : 
+                notification.type === 'error' ? '#f44336' : '#2196F3'
+              }`
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '2px' }}>
+                {notification.title}
+              </div>
+              <div style={{ fontSize: '11px', color: '#666' }}>
+                {notification.message}
+              </div>
+              <div style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>
+                {new Date(notification.timestamp).toLocaleTimeString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ 
         backgroundColor: 'white',

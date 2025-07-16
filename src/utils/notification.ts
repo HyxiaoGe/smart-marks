@@ -2,37 +2,80 @@
  * 通知工具 - 显示操作反馈
  */
 
+// 存储最近的通知消息
+let recentNotifications: Array<{
+  title: string;
+  message: string;
+  type: string;
+  timestamp: number;
+}> = [];
+
 /**
- * 显示Chrome通知
+ * 显示徽章和存储通知（不打扰用户）
  */
 export async function showNotification(
   title: string, 
   message: string, 
   type: 'success' | 'error' | 'info' = 'info'
 ) {
-  // 检查是否有通知权限
-  if (!chrome.notifications) {
-    console.log(`[${type.toUpperCase()}] ${title}: ${message}`);
-    return;
+  // 记录到控制台
+  console.log(`[${type.toUpperCase()}] ${title}: ${message}`);
+  
+  // 存储通知
+  recentNotifications.push({
+    title,
+    message,
+    type,
+    timestamp: Date.now()
+  });
+  
+  // 只保留最近20条
+  if (recentNotifications.length > 20) {
+    recentNotifications = recentNotifications.slice(-20);
   }
   
-  // 使用扩展的默认图标（Plasmo 生成的图标文件名）
-  const iconUrl = chrome.runtime.getURL('icon128.plasmo.ef13585c.png');
+  // 保存到存储
+  await chrome.storage.local.set({ 
+    recentNotifications,
+    hasUnreadNotifications: true 
+  });
   
-  try {
-    // 创建通知
-    await chrome.notifications.create({
-      type: 'basic',
-      iconUrl: iconUrl,
-      title: title,
-      message: message,
-      priority: 2
-    });
-  } catch (error) {
-    console.error('显示通知失败:', error);
-    // 降级到console日志
-    console.log(`[${type.toUpperCase()}] ${title}: ${message}`);
+  // 更新徽章显示未读数量
+  if (type === 'success') {
+    // 成功时显示绿色徽章
+    await chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+  } else if (type === 'error') {
+    // 错误时显示红色徽章
+    await chrome.action.setBadgeBackgroundColor({ color: '#f44336' });
+  } else {
+    // 信息时显示蓝色徽章
+    await chrome.action.setBadgeBackgroundColor({ color: '#2196F3' });
   }
+  
+  // 显示未读数量
+  const unreadCount = recentNotifications.filter(n => 
+    Date.now() - n.timestamp < 24 * 60 * 60 * 1000 // 24小时内的消息
+  ).length;
+  
+  await chrome.action.setBadgeText({ 
+    text: unreadCount > 0 ? String(unreadCount) : '' 
+  });
+}
+
+/**
+ * 获取最近的通知
+ */
+export async function getRecentNotifications() {
+  const data = await chrome.storage.local.get('recentNotifications');
+  return data.recentNotifications || [];
+}
+
+/**
+ * 清除通知徽章
+ */
+export async function clearNotificationBadge() {
+  await chrome.action.setBadgeText({ text: '' });
+  await chrome.storage.local.set({ hasUnreadNotifications: false });
 }
 
 /**
