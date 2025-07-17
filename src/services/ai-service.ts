@@ -53,6 +53,8 @@ ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 3. 保持简洁（建议10-20个字符）
 4. 保留关键词和品牌名
 5. 中文优先，除非是专有名词
+6. 如果原标题过于通用（如 Explore、Home、Dashboard 等），必须从 URL 域名或描述中提取品牌/网站名称作为前缀
+7. 始终确保标题能明确标识是哪个网站或服务
 
 请以JSON格式返回结果，格式如下：
 {
@@ -71,7 +73,10 @@ ${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', '
 请根据内容生成一个简洁的标题，例如：
 - "(16) 「超詳細教學」n8n AI 實作..." → "n8n AI教程"
 - "Bundle Disney+, Hulu, and ESPN+ | Bundle and Save" → "Disney+套餐"
-- "Cursor Directory - Cursor Rules & MCP Servers" → "Cursor目录"`;
+- "Cursor Directory - Cursor Rules & MCP Servers" → "Cursor目录"
+- "Explore" (来自 midjourney.com) → "Midjourney探索"
+- "Dashboard" (来自 vercel.com) → "Vercel控制台"
+- "Home" (来自 github.com) → "GitHub首页"`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -236,6 +241,8 @@ ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 3. 保持简洁（建议10-20个字符）
 4. 保留关键词和品牌名
 5. 中文优先，除非是专有名词
+6. 如果原标题过于通用（如 Explore、Home、Dashboard 等），必须从 URL 域名或描述中提取品牌/网站名称作为前缀
+7. 始终确保标题能明确标识是哪个网站或服务
 
 请以JSON格式返回结果，格式如下：
 {
@@ -254,7 +261,10 @@ ${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', '
 请根据内容生成一个简洁的标题，例如：
 - "(16) 「超詳細教學」n8n AI 實作..." → "n8n AI教程"
 - "Bundle Disney+, Hulu, and ESPN+ | Bundle and Save" → "Disney+套餐"
-- "Cursor Directory - Cursor Rules & MCP Servers" → "Cursor目录"`;
+- "Cursor Directory - Cursor Rules & MCP Servers" → "Cursor目录"
+- "Explore" (来自 midjourney.com) → "Midjourney探索"
+- "Dashboard" (来自 vercel.com) → "Vercel控制台"
+- "Home" (来自 github.com) → "GitHub首页"`;
 
   try {
     const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -368,9 +378,37 @@ export async function classifyBookmark(
       .replace(/\s+/g, ' ') // 合并多个空格
       .trim();
     
-    // 特殊处理：如果标题太短，保留原标题
-    if (suggestedTitle.length < 3) {
-      suggestedTitle = bookmarkInfo.title;
+    // 特殊处理：如果标题太短或太通用，从域名提取品牌名
+    const genericTitles = ['explore', 'home', 'dashboard', 'feed', 'main', 'index', 'welcome', '首页', '主页', '探索', '发现'];
+    if (suggestedTitle.length < 3 || genericTitles.includes(suggestedTitle.toLowerCase())) {
+      try {
+        const hostname = new URL(bookmarkInfo.url).hostname;
+        const brandName = hostname
+          .replace(/^www\./, '')
+          .replace(/\.(com|cn|org|net|io|app|dev|ai).*$/, '')
+          .split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+        
+        if (genericTitles.includes(suggestedTitle.toLowerCase())) {
+          // 如果是通用标题，添加品牌前缀
+          const titleMap = {
+            'explore': '探索',
+            'home': '首页',
+            'dashboard': '控制台',
+            'feed': '动态',
+            'main': '主页',
+            'index': '首页',
+            'welcome': '欢迎页'
+          };
+          const chineseTitle = titleMap[suggestedTitle.toLowerCase()] || suggestedTitle;
+          suggestedTitle = `${brandName}${chineseTitle}`;
+        } else {
+          // 标题太短，使用原标题
+          suggestedTitle = bookmarkInfo.title;
+        }
+      } catch (e) {
+        // URL 解析失败，保留原标题
+        suggestedTitle = bookmarkInfo.title;
+      }
     }
     
     // 限制长度
