@@ -133,7 +133,11 @@ function IndexPopup() {
       const settings = await chrome.storage.sync.get(['apiSettings']);
       const apiKey = settings.apiSettings?.provider === 'openai' 
         ? settings.apiSettings?.openaiKey 
-        : settings.apiSettings?.geminiKey;
+        : settings.apiSettings?.provider === 'gemini'
+        ? settings.apiSettings?.geminiKey
+        : settings.apiSettings?.provider === 'deepseek'
+        ? settings.apiSettings?.deepseekKey
+        : null;
         
       if (!apiKey) {
         setLoading(false);
