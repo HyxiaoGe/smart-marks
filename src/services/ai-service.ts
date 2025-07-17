@@ -441,7 +441,39 @@ export async function classifyBookmark(
     classificationCache.clearDomainCache(bookmarkInfo.url);
   }
   
-  // 3. 尝试使用 LinkPreview API 获取元数据（如果配置了）
+  // 3. 尝试获取页面描述（优先使用自托管服务，失败后使用 LinkPreview API）
+  if (!bookmarkInfo.description) {
+    // 首先尝试使用自托管的 description-scraper 服务
+    try {
+      // 创建超时控制
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(
+        `https://description-scraper.onrender.com/description?url=${encodeURIComponent(bookmarkInfo.url)}`,
+        { 
+          method: 'GET',
+          signal: controller.signal
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.description) {
+          console.log('使用自托管服务获取的描述:', data.description);
+          bookmarkInfo.description = data.description;
+        }
+      } else {
+        console.log('自托管服务返回错误:', response.status);
+      }
+    } catch (error) {
+      console.log('自托管服务请求失败，尝试使用 LinkPreview API:', error);
+    }
+  }
+  
+  // 如果自托管服务失败或没有获取到描述，尝试 LinkPreview API
   if (!bookmarkInfo.description) {
     if (apiSettings.linkPreviewKeys?.length > 0) {
       linkPreviewService.setApiKeys(apiSettings.linkPreviewKeys);
