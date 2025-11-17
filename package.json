@@ -31,17 +31,5 @@
   "dependencies": {
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
-  },
-  "manifest": {
-    "permissions": [
-      "bookmarks",
-      "storage",
-      "activeTab",
-      "tabs"
-    ],
-    "host_permissions": [
-      "https://api.openai.com/*",
-      "https://generativelanguage.googleapis.com/*"
-    ]
   }
 }
