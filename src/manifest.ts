@@ -6,14 +6,10 @@ const manifest: PlasmoManifest = {
   version: "0.1.0",
   description: "智能书签管理Chrome扩展，使用AI自动将书签分类整理到合适的文件夹中",
 
-  // 图标配置 - 移除手动配置，让 Plasmo 自动从 assets/icon.svg 生成
-  // Plasmo 会自动处理 assets/icon.svg 并生成所需的各种尺寸
-
   // 弹出窗口配置
   action: {
     default_popup: "popup.html",
     default_title: "Smart Marks - 智能书签管理器"
-    // 图标由 Plasmo 自动处理
   },
   
   // 后台脚本配置
