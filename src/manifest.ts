@@ -1,6 +1,6 @@
-import type { PlasmoManifest } from "plasmo"
+// import type { PlasmoManifest } from "plasmo"
 
-const manifest: PlasmoManifest = {
+const manifest = {
   manifest_version: 3,
   name: "Smart Marks - 智能书签管理器",
   version: "0.1.0",
@@ -47,12 +47,16 @@ const manifest: PlasmoManifest = {
     "history"           // 历史记录权限（用于更好的分类）
   ],
   
-  // 主机权限（用于访问网页内容进行分析）
+  // 主机权限（仅申请必要的API访问权限）
+  // 注意：不再申请 "https://*/*" 以符合最小权限原则
+  // activeTab 权限已足够访问用户当前浏览的页面
   host_permissions: [
-    "https://*/*",      // 所有HTTPS网站
-    "http://localhost/*", // 本地开发服务器
-    "https://api.openai.com/*", // OpenAI API
-    "https://generativelanguage.googleapis.com/*" // Google Gemini API
+    "http://localhost/*",  // 本地开发服务器
+    "https://api.openai.com/*",  // OpenAI API
+    "https://generativelanguage.googleapis.com/*",  // Google Gemini API
+    "https://api.deepseek.com/*",  // Deepseek API
+    "https://api.linkpreview.net/*",  // LinkPreview API
+    "https://description-scraper.onrender.com/*"  // 自托管的描述抓取服务
   ],
   
   // 内容安全策略
@@ -75,10 +79,7 @@ const manifest: PlasmoManifest = {
       matches: ["<all_urls>"]
     }
   ],
-  
-  // 默认语言设置
-  default_locale: "zh_CN",
-  
+
   // 最小Chrome版本要求
   minimum_chrome_version: "114"
 }

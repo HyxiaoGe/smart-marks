@@ -1,3 +1,4 @@
+import { logger } from '~/utils/logger';
 /**
  * 整理历史记录服务
  * 记录每次整理的书签移动历史，支持撤销操作
@@ -58,7 +59,7 @@ class OrganizeHistoryService {
    */
   async addRecord(record: Omit<OrganizeRecord, 'id'>): Promise<void> {
     if (!this.currentSession) {
-      console.error('没有活动的整理会话');
+      logger.error('没有活动的整理会话');
       return;
     }
     
@@ -213,14 +214,14 @@ class OrganizeHistoryService {
       const record = recentRecords.find(r => r.id === recordId);
       
       if (!record) {
-        console.error('找不到整理记录');
+        logger.error('找不到整理记录');
         return false;
       }
       
       // 将书签移回原位置
       if (record.fromFolder) {
         // TODO: 需要实现查找原文件夹的逻辑
-        console.log('撤销操作：将书签移回原文件夹', record.fromFolder);
+        logger.debug('撤销操作：将书签移回原文件夹', record.fromFolder);
       } else {
         // 移到书签栏根目录
         await chrome.bookmarks.move(record.bookmarkId, {
@@ -233,7 +234,7 @@ class OrganizeHistoryService {
       
       return true;
     } catch (error) {
-      console.error('撤销操作失败:', error);
+      logger.error('撤销操作失败:', error);
       return false;
     }
   }
@@ -253,7 +254,7 @@ class OrganizeHistoryService {
    */
   async clearProcessedBookmarks(): Promise<void> {
     await chrome.storage.local.remove('processedBookmarks');
-    console.log('已清理所有已处理记录');
+    logger.debug('已清理所有已处理记录');
   }
 
   /**

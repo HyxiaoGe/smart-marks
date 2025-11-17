@@ -1,3 +1,4 @@
+import { logger } from '~/utils/logger';
 /**
  * 书签过滤工具函数
  */
@@ -19,7 +20,7 @@ export async function getBookmarkPath(bookmarkId: string): Promise<string> {
     const bookmarkTree = await chrome.bookmarks.getTree();
     return findBookmarkPath(bookmarkTree, bookmarkId) || '';
   } catch (error) {
-    console.error('获取书签路径失败:', error);
+    logger.error('获取书签路径失败:', error);
     return '';
   }
 }
@@ -83,7 +84,7 @@ export async function getBookmarkFolderPath(bookmark: chrome.bookmarks.BookmarkT
     
     return parents.join('/');
   } catch (error) {
-    console.error('获取书签文件夹路径失败:', error);
+    logger.error('获取书签文件夹路径失败:', error);
     return '';
   }
 }
@@ -163,7 +164,7 @@ export async function shouldFilterBookmark(
   // 检查是否在排除的文件夹中
   for (const excludeFolder of filterSettings.excludeFolders) {
     if (folderPath.includes(excludeFolder)) {
-      console.log(`书签 "${bookmark.title}" 在排除文件夹 "${excludeFolder}" 中，跳过处理`);
+      logger.debug(`书签 "${bookmark.title}" 在排除文件夹 "${excludeFolder}" 中，跳过处理`);
       return true;
     }
   }
@@ -171,7 +172,7 @@ export async function shouldFilterBookmark(
   // 检查是否匹配排除模式
   for (const pattern of filterSettings.excludePatterns) {
     if (matchPattern(folderPath, pattern, filterSettings.ignoreCase)) {
-      console.log(`书签 "${bookmark.title}" 匹配排除模式 "${pattern}"，跳过处理`);
+      logger.debug(`书签 "${bookmark.title}" 匹配排除模式 "${pattern}"，跳过处理`);
       return true;
     }
   }
@@ -223,7 +224,7 @@ export async function loadFilterSettings(): Promise<FilterSettings> {
     const result = await chrome.storage.sync.get(['filterSettings']);
     return result.filterSettings || getDefaultFilterSettings();
   } catch (error) {
-    console.error('加载过滤设置失败:', error);
+    logger.error('加载过滤设置失败:', error);
     return getDefaultFilterSettings();
   }
 }
@@ -235,9 +236,9 @@ export async function loadFilterSettings(): Promise<FilterSettings> {
 export async function saveFilterSettings(settings: FilterSettings): Promise<void> {
   try {
     await chrome.storage.sync.set({ filterSettings: settings });
-    console.log('过滤设置已保存');
+    logger.debug('过滤设置已保存');
   } catch (error) {
-    console.error('保存过滤设置失败:', error);
+    logger.error('保存过滤设置失败:', error);
     throw error;
   }
 }

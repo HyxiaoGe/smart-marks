@@ -1,3 +1,4 @@
+import { logger } from '~/utils/logger';
 /**
  * 通知工具 - 显示操作反馈
  */
@@ -21,7 +22,7 @@ chrome.storage.local.get('recentNotifications').then(data => {
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes.recentNotifications) {
     recentNotifications = changes.recentNotifications.newValue || [];
-    console.log('通知列表已同步更新:', recentNotifications.length, '条');
+    logger.debug('通知列表已同步更新:', recentNotifications.length, '条');
   }
 });
 
@@ -34,7 +35,7 @@ export async function showNotification(
   type: 'success' | 'error' | 'info' = 'info'
 ) {
   // 记录到控制台
-  console.log(`[${type.toUpperCase()}] ${title}: ${message}`);
+  logger.debug(`[${type.toUpperCase()}] ${title}: ${message}`);
   
   // 存储通知
   recentNotifications.push({
@@ -120,7 +121,7 @@ export async function showProgressNotification(
     
   // 检查是否有通知权限
   if (!chrome.notifications) {
-    console.log(`整理进度: ${message}`);
+    logger.debug(`整理进度: ${message}`);
     return;
   }
     
@@ -134,7 +135,7 @@ export async function showProgressNotification(
       priority: 1
     });
   } catch (error) {
-    console.log(`整理进度: ${message}`);
+    logger.debug(`整理进度: ${message}`);
   }
 }
 
@@ -150,6 +151,6 @@ export async function clearProgressNotification() {
   try {
     await chrome.notifications.clear('progress');
   } catch (error) {
-    console.error('清除通知失败:', error);
+    logger.error('清除通知失败:', error);
   }
 }

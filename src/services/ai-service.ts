@@ -6,6 +6,7 @@ import { getDomainPattern } from './domain-patterns';
 import { classificationCache } from './classification-cache';
 import { linkPreviewService } from './linkpreview-service';
 import { normalizeFolder, STANDARD_FOLDERS } from './folder-normalizer';
+import { logger } from '~/utils/logger';
 
 interface BookmarkInfo {
   title: string;
@@ -99,24 +100,69 @@ ${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', '
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('OpenAI API错误响应:', errorData);
+      logger.error('OpenAI API错误响应:', errorData);
       throw new Error(`OpenAI API错误: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
-    
-    // 标准化返回的分类名称
-    const normalizedCategory = normalizeFolder(result.category || '未分类');
-    
-    return {
-      category: normalizedCategory,
-      confidence: result.confidence || 0.5,
-      reasoning: result.reasoning,
-      suggestedTitle: result.suggestedTitle
-    };
+
+    // 安全的JSON解析，添加完善的错误处理
+    try {
+      const content = data?.choices?.[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('OpenAI响应内容为空');
+      }
+
+      let result;
+      try {
+        result = JSON.parse(content);
+      } catch (parseError) {
+        logger.error('JSON解析失败，原始内容:', content);
+        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+        throw new Error(`无法解析OpenAI返回的JSON: ${errorMessage}`);
+      }
+
+      // 验证返回的数据结构
+      if (!result.category) {
+        logger.warn('OpenAI返回缺少category字段:', result);
+        result.category = '未分类';
+      }
+
+      if (typeof result.confidence !== 'number') {
+        logger.warn('OpenAI返回缺少或错误的confidence字段:', result.confidence);
+        result.confidence = 0.5;
+      }
+
+      // 验证置信度范围 [0, 1]
+      if (result.confidence < 0 || result.confidence > 1) {
+        logger.warn('置信度超出范围，已调整:', result.confidence);
+        result.confidence = Math.max(0, Math.min(1, result.confidence));
+      }
+
+      // 标准化返回的分类名称
+      const normalizedCategory = normalizeFolder(result.category);
+
+      return {
+        category: normalizedCategory,
+        confidence: result.confidence,
+        reasoning: result.reasoning || '无详细说明',
+        suggestedTitle: result.suggestedTitle
+      };
+
+    } catch (parseError) {
+      logger.error('处理OpenAI响应失败:', parseError);
+      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      // 返回降级结果而不是抛出异常
+      return {
+        category: '未分类',
+        confidence: 0.3,
+        reasoning: `AI分类失败: ${errorMessage}`,
+        suggestedTitle: undefined
+      };
+    }
   } catch (error) {
-    console.error('OpenAI分类失败:', error);
+    logger.error('OpenAI分类失败:', error);
     throw error;
   }
 }
@@ -156,6 +202,9 @@ ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(',
 返回JSON格式：{"category": "文件夹名称", "confidence": 0.8, "reasoning": "分类理由", "suggestedTitle": "优化后的标题"}`;
 
   try {
+    // 注意：Google Gemini API 使用 URL 参数传递 API 密钥是其官方设计方式
+    // 参考：https://ai.google.dev/gemini-api/docs/api-key
+    // 虽然不是最佳实践，但这是 Google 的 API 规范
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
@@ -179,32 +228,76 @@ ${bookmarkInfo.keywords?.length ? `- 关键词：${bookmarkInfo.keywords.join(',
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Gemini API错误响应:', errorData);
+      logger.error('Gemini API错误响应:', errorData);
       throw new Error(`Gemini API错误: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
-    const text = data.candidates[0].content.parts[0].text;
-    
-    // 提取JSON内容
-    const jsonMatch = text.match(/\{[^}]+\}/);
-    if (!jsonMatch) {
-      throw new Error('无法解析Gemini返回的结果');
+
+    // 安全的JSON解析，添加完善的错误处理
+    try {
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!text) {
+        throw new Error('Gemini响应内容为空');
+      }
+
+      // 提取JSON内容（Gemini可能返回markdown格式）
+      const jsonMatch = text.match(/\{[^}]+\}/);
+      if (!jsonMatch) {
+        logger.error('无法从Gemini响应中提取JSON，原始内容:', text);
+        throw new Error('无法解析Gemini返回的结果');
+      }
+
+      let result;
+      try {
+        result = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        logger.error('JSON解析失败，提取的内容:', jsonMatch[0]);
+        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+        throw new Error(`无法解析Gemini返回的JSON: ${errorMessage}`);
+      }
+
+      // 验证返回的数据结构
+      if (!result.category) {
+        logger.warn('Gemini返回缺少category字段:', result);
+        result.category = '未分类';
+      }
+
+      if (typeof result.confidence !== 'number') {
+        logger.warn('Gemini返回缺少或错误的confidence字段:', result.confidence);
+        result.confidence = 0.5;
+      }
+
+      // 验证置信度范围 [0, 1]
+      if (result.confidence < 0 || result.confidence > 1) {
+        logger.warn('置信度超出范围，已调整:', result.confidence);
+        result.confidence = Math.max(0, Math.min(1, result.confidence));
+      }
+
+      // 标准化返回的分类名称
+      const normalizedCategory = normalizeFolder(result.category);
+
+      return {
+        category: normalizedCategory,
+        confidence: result.confidence,
+        reasoning: result.reasoning || '无详细说明',
+        suggestedTitle: result.suggestedTitle
+      };
+
+    } catch (parseError) {
+      logger.error('处理Gemini响应失败:', parseError);
+      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      // 返回降级结果而不是抛出异常
+      return {
+        category: '未分类',
+        confidence: 0.3,
+        reasoning: `AI分类失败: ${errorMessage}`,
+        suggestedTitle: undefined
+      };
     }
-    
-    const result = JSON.parse(jsonMatch[0]);
-    
-    // 标准化返回的分类名称
-    const normalizedCategory = normalizeFolder(result.category || '未分类');
-    
-    return {
-      category: normalizedCategory,
-      confidence: result.confidence || 0.5,
-      reasoning: result.reasoning,
-      suggestedTitle: result.suggestedTitle
-    };
   } catch (error) {
-    console.error('Gemini分类失败:', error);
+    logger.error('Gemini分类失败:', error);
     throw error;
   }
 }
@@ -287,24 +380,69 @@ ${bookmarkInfo.keywords?.length ? `关键词：${bookmarkInfo.keywords.join(', '
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Deepseek API错误响应:', errorData);
+      logger.error('Deepseek API错误响应:', errorData);
       throw new Error(`Deepseek API错误: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
-    
-    // 标准化返回的分类名称
-    const normalizedCategory = normalizeFolder(result.category || '未分类');
-    
-    return {
-      category: normalizedCategory,
-      confidence: result.confidence || 0.5,
-      reasoning: result.reasoning,
-      suggestedTitle: result.suggestedTitle
-    };
+
+    // 安全的JSON解析，添加完善的错误处理
+    try {
+      const content = data?.choices?.[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('Deepseek响应内容为空');
+      }
+
+      let result;
+      try {
+        result = JSON.parse(content);
+      } catch (parseError) {
+        logger.error('JSON解析失败，原始内容:', content);
+        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+        throw new Error(`无法解析Deepseek返回的JSON: ${errorMessage}`);
+      }
+
+      // 验证返回的数据结构
+      if (!result.category) {
+        logger.warn('Deepseek返回缺少category字段:', result);
+        result.category = '未分类';
+      }
+
+      if (typeof result.confidence !== 'number') {
+        logger.warn('Deepseek返回缺少或错误的confidence字段:', result.confidence);
+        result.confidence = 0.5;
+      }
+
+      // 验证置信度范围 [0, 1]
+      if (result.confidence < 0 || result.confidence > 1) {
+        logger.warn('置信度超出范围，已调整:', result.confidence);
+        result.confidence = Math.max(0, Math.min(1, result.confidence));
+      }
+
+      // 标准化返回的分类名称
+      const normalizedCategory = normalizeFolder(result.category);
+
+      return {
+        category: normalizedCategory,
+        confidence: result.confidence,
+        reasoning: result.reasoning || '无详细说明',
+        suggestedTitle: result.suggestedTitle
+      };
+
+    } catch (parseError) {
+      logger.error('处理Deepseek响应失败:', parseError);
+      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      // 返回降级结果而不是抛出异常
+      return {
+        category: '未分类',
+        confidence: 0.3,
+        reasoning: `AI分类失败: ${errorMessage}`,
+        suggestedTitle: undefined
+      };
+    }
   } catch (error) {
-    console.error('Deepseek分类失败:', error);
+    logger.error('Deepseek分类失败:', error);
     throw error;
   }
 }
@@ -350,12 +488,12 @@ export async function classifyBookmark(
     forceReclassify?: boolean;
   } = {}
 ): Promise<ClassificationResult> {
-  console.log('开始智能分类:', bookmarkInfo.url);
-  
+  logger.debug('开始智能分类:', bookmarkInfo.url);
+
   // 1. 检查本地域名字典
   const domainPattern = getDomainPattern(bookmarkInfo.url);
   if (domainPattern) {
-    console.log('使用域名字典分类:', domainPattern.category);
+    logger.debug('使用域名字典分类:', domainPattern.category);
     
     // 缓存字典结果
     await classificationCache.setCachedClassification(
@@ -390,7 +528,7 @@ export async function classifyBookmark(
         
         if (genericTitles.includes(suggestedTitle.toLowerCase())) {
           // 如果是通用标题，添加品牌前缀
-          const titleMap = {
+          const titleMap: Record<string, string> = {
             'explore': '探索',
             'home': '首页',
             'dashboard': '控制台',
@@ -428,7 +566,7 @@ export async function classifyBookmark(
   if (!options.forceReclassify) {
     const cachedClassification = classificationCache.getCachedClassification(bookmarkInfo.url);
     if (cachedClassification) {
-      console.log('使用缓存分类:', cachedClassification.category);
+      logger.debug('使用缓存分类:', cachedClassification.category);
       return {
         category: cachedClassification.category,
         confidence: cachedClassification.confidence,
@@ -436,7 +574,7 @@ export async function classifyBookmark(
       };
     }
   } else {
-    console.log('强制重新分类，跳过缓存');
+    logger.debug('强制重新分类，跳过缓存');
     // 清除该域名的缓存
     classificationCache.clearDomainCache(bookmarkInfo.url);
   }
@@ -462,53 +600,53 @@ export async function classifyBookmark(
       if (response.ok) {
         const data = await response.json();
         if (data.description) {
-          console.log('使用自托管服务获取的描述:', data.description);
+          logger.debug('使用自托管服务获取的描述:', data.description);
           bookmarkInfo.description = data.description;
         }
       } else {
-        console.log('自托管服务返回错误:', response.status);
+        logger.debug('自托管服务返回错误:', response.status);
       }
     } catch (error) {
-      console.log('自托管服务请求失败，尝试使用 LinkPreview API:', error);
+      logger.debug('自托管服务请求失败，尝试使用 LinkPreview API:', error);
     }
   }
-  
+
   // 如果自托管服务失败或没有获取到描述，尝试 LinkPreview API
   if (!bookmarkInfo.description) {
-    if (apiSettings.linkPreviewKeys?.length > 0) {
+    if (apiSettings.linkPreviewKeys && apiSettings.linkPreviewKeys.length > 0) {
       linkPreviewService.setApiKeys(apiSettings.linkPreviewKeys);
-      
+
       if (linkPreviewService.hasQuota()) {
         const preview = await linkPreviewService.fetchPreview(bookmarkInfo.url);
         if (preview) {
-          console.log('使用LinkPreview获取的元数据:', preview.description);
+          logger.debug('使用LinkPreview获取的元数据:', preview.description);
           bookmarkInfo.description = preview.description;
           bookmarkInfo.title = preview.title || bookmarkInfo.title;
         }
       } else {
         const quotaInfo = linkPreviewService.getQuotaInfo();
-        console.log(`LinkPreview配额已用完（${quotaInfo.keyCount}个密钥），${quotaInfo.resetIn}分钟后重置`);
+        logger.info(`LinkPreview配额已用完（${quotaInfo.keyCount}个密钥），${quotaInfo.resetIn}分钟后重置`);
       }
     } else if (apiSettings.linkPreviewKey) {
       // 向后兼容单个密钥
       linkPreviewService.setApiKey(apiSettings.linkPreviewKey);
-      
+
       if (linkPreviewService.hasQuota()) {
         const preview = await linkPreviewService.fetchPreview(bookmarkInfo.url);
         if (preview) {
-          console.log('使用LinkPreview获取的元数据:', preview.description);
+          logger.debug('使用LinkPreview获取的元数据:', preview.description);
           bookmarkInfo.description = preview.description;
           bookmarkInfo.title = preview.title || bookmarkInfo.title;
         }
       } else {
         const quotaInfo = linkPreviewService.getQuotaInfo();
-        console.log(`LinkPreview配额已用完，${quotaInfo.resetIn}分钟后重置`);
+        logger.info(`LinkPreview配额已用完，${quotaInfo.resetIn}分钟后重置`);
       }
     }
   }
-  
+
   // 4. 使用 AI 进行分类
-  console.log('使用AI进行分类');
+  logger.debug('使用AI进行分类');
   const existingFolders = await getExistingFolders();
   
   let result: ClassificationResult;
