@@ -34,10 +34,15 @@ async function classifyWithOpenAI(
   // 标准化现有文件夹名称
   const normalizedExisting = existingFolders.map(f => normalizeFolder(f));
   const uniqueFolders = [...new Set([...normalizedExisting, ...STANDARD_FOLDERS])].sort();
-  
+
   const systemPrompt = `你是一个智能书签分类助手。你的任务是：
 1. 根据书签的标题、URL和描述，将其分类到最合适的文件夹中
 2. 为书签生成一个简洁清晰的标题
+
+**重要规则 - 确保分类一致性**：
+1. 对于相同或相似的内容，必须始终返回相同的分类
+2. 只有在你非常确定(confidence >= 0.8)时才返回明确分类
+3. 如果不确定，将confidence设置为较低值(< 0.8)，系统会提示用户确认
 
 推荐的标准文件夹列表：
 ${uniqueFolders.map(f => `- ${f}`).join('\n')}
@@ -47,6 +52,13 @@ ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 2. 优先选择最匹配的标准文件夹
 3. 文件夹名称必须与列表中的完全一致
 4. 考虑书签的主要用途和内容类型
+5. 尽量使用现有文件夹，避免需要创建新分类
+
+置信度评估标准：
+- 0.9-1.0: 非常确定（如：github.com → 开发工具）
+- 0.8-0.9: 很确定（如：技术博客 → 技术文档）
+- 0.7-0.8: 比较确定，但可能有其他选择
+- < 0.7: 不确定，需要用户确认
 
 标题优化规则：
 1. 提取核心内容，去除冗余信息
@@ -60,8 +72,8 @@ ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 请以JSON格式返回结果，格式如下：
 {
   "category": "文件夹名称",
-  "confidence": 0.8,
-  "reasoning": "分类理由",
+  "confidence": 0.85,
+  "reasoning": "分类理由（说明为什么选择这个分类）",
   "suggestedTitle": "优化后的标题"
 }`;
 
@@ -314,10 +326,15 @@ async function classifyWithDeepseek(
   // 标准化现有文件夹名称
   const normalizedExisting = existingFolders.map(f => normalizeFolder(f));
   const uniqueFolders = [...new Set([...normalizedExisting, ...STANDARD_FOLDERS])].sort();
-  
+
   const systemPrompt = `你是一个智能书签分类助手。你的任务是：
 1. 根据书签的标题、URL和描述，将其分类到最合适的文件夹中
 2. 为书签生成一个简洁清晰的标题
+
+**重要规则 - 确保分类一致性**：
+1. 对于相同或相似的内容，必须始终返回相同的分类
+2. 只有在你非常确定(confidence >= 0.8)时才返回明确分类
+3. 如果不确定，将confidence设置为较低值(< 0.8)，系统会提示用户确认
 
 推荐的标准文件夹列表：
 ${uniqueFolders.map(f => `- ${f}`).join('\n')}
@@ -327,6 +344,13 @@ ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 2. 优先选择最匹配的标准文件夹
 3. 文件夹名称必须与列表中的完全一致
 4. 考虑书签的主要用途和内容类型
+5. 尽量使用现有文件夹，避免需要创建新分类
+
+置信度评估标准：
+- 0.9-1.0: 非常确定（如：github.com → 开发工具）
+- 0.8-0.9: 很确定（如：技术博客 → 技术文档）
+- 0.7-0.8: 比较确定，但可能有其他选择
+- < 0.7: 不确定，需要用户确认
 
 标题优化规则：
 1. 提取核心内容，去除冗余信息
@@ -340,8 +364,8 @@ ${uniqueFolders.map(f => `- ${f}`).join('\n')}
 请以JSON格式返回结果，格式如下：
 {
   "category": "文件夹名称",
-  "confidence": 0.8,
-  "reasoning": "分类理由",
+  "confidence": 0.85,
+  "reasoning": "分类理由（说明为什么选择这个分类）",
   "suggestedTitle": "优化后的标题"
 }`;
 

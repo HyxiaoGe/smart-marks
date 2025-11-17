@@ -6,6 +6,7 @@ import { shouldFilterBookmark, loadFilterSettings } from './utils/filter-utils';
 import { classifyBookmark as aiClassifyBookmark } from './services/ai-service';
 import { showNotification, showProgressNotification, clearProgressNotification } from './utils/notification';
 import { organizeHistory } from './services/organize-history';
+import { classificationCache } from './services/classification-cache';
 import { logger } from '~/utils/logger';
 
 // 存储页面元数据的临时缓存
@@ -203,42 +204,48 @@ chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
     const newParentName = await getParentFolderName(moveInfo.parentId);
     
     if (!movingBookmarks.has(id)) {
-      logger.error('⚠️ 警告：检测到外部移动操作！', {
+      // 用户手动移动书签 - 这是重要的学习机会！
+      logger.info('✅ 检测到用户手动操作:', {
         title: bookmark.title,
         url: bookmark.url,
         从: oldParentName,
-        到: newParentName,
-        可能原因: '用户手动操作或其他扩展干扰'
+        到: newParentName
       });
-      
-      // 如果是刚处理过的书签被外部移动，记录详情
-      if (processedBookmarks.has(id)) {
-        logger.error('⚠️ 刚分类的书签被外部移回！这可能是Chrome的默认行为或其他扩展的干扰。');
-        
-        // 检查是否偏离了预期位置
-        const expectedFolder = expectedLocations.get(id);
-        if (expectedFolder && newParentName !== expectedFolder) {
-          logger.error(`⚠️ 书签应该在 "${expectedFolder}" 文件夹，但被移到了 "${newParentName}"`);
-          
-          // 尝试移回正确位置
-          // 尝试将书签移回正确位置
-          setTimeout(async () => {
-            try {
-              const targetFolder = await findOrCreateFolder(expectedFolder, false);
-              if (targetFolder && targetFolder.id !== moveInfo.parentId) {
-                movingBookmarks.add(id);
-                await chrome.bookmarks.move(id, { parentId: targetFolder.id });
-                // 已将书签移回文件夹
-                movingBookmarks.delete(id);
-              }
-            } catch (error) {
-              logger.error('移回书签失败:', error);
-            }
-          }, 1000); // 延迟1秒后尝试移回
+
+      // 学习用户的分类偏好
+      if (bookmark.url && newParentName) {
+        try {
+          // 将用户的手动分类保存到缓存，并永久锁定
+          await classificationCache.setCachedClassification(
+            bookmark.url,
+            newParentName,
+            1.0,  // 用户手动 = 100%置信度
+            'manual',
+            true  // 永久锁定
+          );
+
+          logger.info(`✅ 已学习用户偏好: ${bookmark.url} → ${newParentName} (永久锁定)`);
+
+          // 如果之前有预期位置，清除它（尊重用户的选择）
+          expectedLocations.delete(id);
+
+          // 记录用户纠正的案例（用于未来的偏好学习）
+          const expectedFolder = expectedLocations.get(id);
+          if (expectedFolder && expectedFolder !== newParentName) {
+            logger.info(`📚 用户纠正: AI建议="${expectedFolder}" → 用户选择="${newParentName}"`);
+            // TODO: 未来可以基于这些数据训练用户偏好模型
+          }
+        } catch (error) {
+          logger.error('保存用户偏好失败:', error);
         }
       }
     } else {
       // 这是我们插件的移动操作
+      logger.debug('插件自动移动书签', {
+        title: bookmark.title,
+        从: oldParentName,
+        到: newParentName
+      });
     }
   } catch (error) {
     logger.error('获取移动书签信息失败:', error);
