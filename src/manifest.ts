@@ -1,6 +1,6 @@
-// import type { PlasmoManifest } from "plasmo"
+import type { PlasmoManifest } from "plasmo"
 
-const manifest = {
+const manifest: PlasmoManifest = {
   manifest_version: 3,
   name: "Smart Marks - 智能书签管理器",
   version: "0.1.0",
