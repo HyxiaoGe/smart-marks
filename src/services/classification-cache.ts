@@ -2,6 +2,8 @@
  * 分类缓存服务 - 管理域名分类的缓存
  */
 
+import { logger } from '~/utils/logger';
+
 interface DomainClassification {
   domain: string;
   category: string;
@@ -50,7 +52,7 @@ class ClassificationCacheService {
         this.stats = data[this.STATS_KEY];
       }
     } catch (error) {
-      console.error('加载分类缓存失败:', error);
+      logger.error('加载分类缓存失败:', error);
     }
   }
 
@@ -69,7 +71,7 @@ class ClassificationCacheService {
         [this.STATS_KEY]: this.stats
       });
     } catch (error) {
-      console.error('保存分类缓存失败:', error);
+      logger.error('保存分类缓存失败:', error);
     }
   }
 
@@ -89,7 +91,7 @@ class ClassificationCacheService {
       
       return null;
     } catch (error) {
-      console.error('获取缓存分类失败:', error);
+      logger.error('获取缓存分类失败:', error);
       return null;
     }
   }
@@ -120,7 +122,7 @@ class ClassificationCacheService {
       // 异步保存，不阻塞主流程
       setTimeout(() => this.saveCache(), 100);
     } catch (error) {
-      console.error('设置缓存分类失败:', error);
+      logger.error('设置缓存分类失败:', error);
     }
   }
 
@@ -177,7 +179,7 @@ class ClassificationCacheService {
     });
     
     if (cleaned > 0) {
-      console.log(`清理了 ${cleaned} 个过期的域名分类缓存`);
+      logger.debug(`清理了 ${cleaned} 个过期的域名分类缓存`);
       await this.saveCache();
     }
   }
@@ -189,11 +191,11 @@ class ClassificationCacheService {
     try {
       const domain = new URL(url).hostname.replace('www.', '');
       this.cache.delete(domain);
-      console.log(`已清除域名 ${domain} 的分类缓存`);
+      logger.debug(`已清除域名 ${domain} 的分类缓存`);
       // 异步保存
       setTimeout(() => this.saveCache(), 100);
     } catch (error) {
-      console.error('清除域名缓存失败:', error);
+      logger.error('清除域名缓存失败:', error);
     }
   }
 

@@ -3,6 +3,7 @@
  */
 
 import type { ExtendedBookmarkTreeNode, BookmarkStats } from '../types/bookmark';
+import { logger } from '~/utils/logger';
 
 /**
  * 获取书签统计信息
@@ -97,7 +98,7 @@ export function getDomainFromUrl(url: string): string {
     const urlObj = new URL(url);
     return urlObj.hostname;
   } catch (error) {
-    console.error('解析URL失败:', error);
+    logger.error('解析URL失败:', error);
     return '';
   }
 }
@@ -142,7 +143,7 @@ export function getFaviconUrl(url: string): string {
     const urlObj = new URL(url);
     return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}`;
   } catch (error) {
-    console.error('获取图标URL失败:', error);
+    logger.error('获取图标URL失败:', error);
     return '';
   }
 }
@@ -188,7 +189,7 @@ export function extractKeywordsFromUrl(url: string): string[] {
     }
     
   } catch (error) {
-    console.error('提取关键词失败:', error);
+    logger.error('提取关键词失败:', error);
   }
   
   return [...new Set(keywords)]; // 去重

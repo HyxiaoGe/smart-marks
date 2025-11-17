@@ -1,3 +1,4 @@
+import { logger } from '~/utils/logger';
 /**
  * LinkPreview API 服务
  */
@@ -94,7 +95,7 @@ class LinkPreviewService {
         }
       }
     } catch (error) {
-      console.error('加载LinkPreview配额失败:', error);
+      logger.error('加载LinkPreview配额失败:', error);
     }
   }
 
@@ -113,7 +114,7 @@ class LinkPreviewService {
         [this.QUOTA_KEY]: quotaObj
       });
     } catch (error) {
-      console.error('保存LinkPreview配额失败:', error);
+      logger.error('保存LinkPreview配额失败:', error);
     }
   }
 
@@ -198,7 +199,7 @@ class LinkPreviewService {
   async fetchPreview(url: string, retryCount: number = 0): Promise<LinkPreviewResponse | null> {
     const apiKey = this.getCurrentKey();
     if (!apiKey) {
-      console.log('LinkPreview: 未配置API Key');
+      logger.debug('LinkPreview: 未配置API Key');
       return null;
     }
 
@@ -210,13 +211,13 @@ class LinkPreviewService {
       });
 
       if (!response.ok) {
-        console.log(`LinkPreview: API Key ${this.currentKeyIndex + 1} 请求失败 (${response.status})`);
+        logger.debug(`LinkPreview: API Key ${this.currentKeyIndex + 1} 请求失败 (${response.status})`);
         
         // 如果有其他密钥可用，尝试切换
         if (this.apiKeys.length > 1 && retryCount < this.apiKeys.length - 1) {
           const nextKey = this.switchToNextKey();
           if (nextKey) {
-            console.log(`LinkPreview: 切换到密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length} 重试`);
+            logger.debug(`LinkPreview: 切换到密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length} 重试`);
             return this.fetchPreview(url, retryCount + 1);
           }
         }
@@ -233,17 +234,17 @@ class LinkPreviewService {
         await this.saveQuota();
       }
       
-      console.log(`LinkPreview: 获取成功 (密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length})`);
+      logger.debug(`LinkPreview: 获取成功 (密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length})`);
       
       return data;
     } catch (error) {
-      console.error(`LinkPreview: 密钥 ${this.currentKeyIndex + 1} 调用失败:`, error);
+      logger.error(`LinkPreview: 密钥 ${this.currentKeyIndex + 1} 调用失败:`, error);
       
       // 如果有其他密钥可用，尝试切换
       if (this.apiKeys.length > 1 && retryCount < this.apiKeys.length - 1) {
         const nextKey = this.switchToNextKey();
         if (nextKey) {
-          console.log(`LinkPreview: 切换到密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length} 重试`);
+          logger.debug(`LinkPreview: 切换到密钥 ${this.currentKeyIndex + 1}/${this.apiKeys.length} 重试`);
           return this.fetchPreview(url, retryCount + 1);
         }
       }
@@ -260,7 +261,7 @@ class LinkPreviewService {
     
     for (const url of urls) {
       if (!this.hasQuota()) {
-        console.log('LinkPreview: 批量获取中断，配额已用完');
+        logger.debug('LinkPreview: 批量获取中断，配额已用完');
         break;
       }
       

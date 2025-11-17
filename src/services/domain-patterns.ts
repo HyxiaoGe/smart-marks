@@ -1,3 +1,4 @@
+import { logger } from '~/utils/logger';
 /**
  * 域名分类字典 - 主流网站的分类映射
  */
@@ -157,7 +158,7 @@ export function getDomainPattern(url: string): DomainPattern | null {
     
     return null;
   } catch (error) {
-    console.error('解析URL失败:', error);
+    logger.error('解析URL失败:', error);
     return null;
   }
 }

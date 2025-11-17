@@ -6,6 +6,7 @@ import { shouldFilterBookmark, loadFilterSettings } from './utils/filter-utils';
 import { classifyBookmark as aiClassifyBookmark } from './services/ai-service';
 import { showNotification, showProgressNotification, clearProgressNotification } from './utils/notification';
 import { organizeHistory } from './services/organize-history';
+import { logger } from '~/utils/logger';
 
 // 存储页面元数据的临时缓存
 const pageMetadataCache = new Map<string, any>();
@@ -21,7 +22,7 @@ async function loadProcessedBookmarks() {
       result.processedBookmarks.forEach((id: string) => processedBookmarks.add(id));
     }
   } catch (error) {
-    console.error('加载已处理书签记录失败:', error);
+    logger.error('加载已处理书签记录失败:', error);
   }
 }
 
@@ -32,13 +33,13 @@ async function saveProcessedBookmarks() {
       processedBookmarks: Array.from(processedBookmarks)
     });
   } catch (error) {
-    console.error('保存已处理书签记录失败:', error);
+    logger.error('保存已处理书签记录失败:', error);
   }
 }
 
 // 监听扩展安装事件
 chrome.runtime.onInstalled.addListener(() => {
-  // console.log('智能书签管理器已安装');
+  // logger.debug('智能书签管理器已安装');
   
   // 初始化默认设置
   chrome.storage.sync.set({
@@ -55,7 +56,7 @@ chrome.runtime.onInstalled.addListener(() => {
 loadProcessedBookmarks();
 
 // Service Worker 激活时的日志
-// console.log('智能书签管理器 Service Worker 已启动', new Date().toLocaleTimeString());
+// logger.debug('智能书签管理器 Service Worker 已启动', new Date().toLocaleTimeString());
 
 // 用于跟踪最近创建的书签，避免重复处理
 const recentlyCreatedBookmarks = new Set<string>();
@@ -68,7 +69,7 @@ const expectedLocations = new Map<string, string>();
 
 // 监听新书签创建事件
 chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
-  // console.log('新书签创建:', bookmark.title);
+  // logger.debug('新书签创建:', bookmark.title);
   
   // 检查是否启用自动分类和API配置
   const settings = await chrome.storage.sync.get(['apiSettings', 'filterSettings']);
@@ -118,7 +119,7 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
           metadata = await chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_PAGE_METADATA' });
         }
       } catch (error) {
-        console.error('获取页面元数据失败:', error);
+        logger.error('获取页面元数据失败:', error);
       }
     }
     
@@ -170,7 +171,7 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
       // 最终验证：5秒后再次检查书签位置
       chrome.bookmarks.get(bookmark.id).then(([finalBookmark]) => {
         getParentFolderName(finalBookmark.parentId).then(finalFolder => {
-          // console.log(`[5秒后最终验证] 书签 "${finalBookmark.title}" 最终位于: "${finalFolder}" 文件夹`);
+          // logger.debug(`[5秒后最终验证] 书签 "${finalBookmark.title}" 最终位于: "${finalFolder}" 文件夹`);
         });
       }).catch(err => {
         // 书签可能已被删除
@@ -186,7 +187,7 @@ chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
 // 监听书签移动事件
 chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
   const timestamp = new Date().toISOString();
-  console.warn(`[${timestamp}] 检测到书签移动事件:`, {
+  logger.warn(`[${timestamp}] 检测到书签移动事件:`, {
     bookmarkId: id,
     oldParentId: moveInfo.oldParentId,
     oldIndex: moveInfo.oldIndex,
@@ -202,7 +203,7 @@ chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
     const newParentName = await getParentFolderName(moveInfo.parentId);
     
     if (!movingBookmarks.has(id)) {
-      console.error('⚠️ 警告：检测到外部移动操作！', {
+      logger.error('⚠️ 警告：检测到外部移动操作！', {
         title: bookmark.title,
         url: bookmark.url,
         从: oldParentName,
@@ -212,12 +213,12 @@ chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
       
       // 如果是刚处理过的书签被外部移动，记录详情
       if (processedBookmarks.has(id)) {
-        console.error('⚠️ 刚分类的书签被外部移回！这可能是Chrome的默认行为或其他扩展的干扰。');
+        logger.error('⚠️ 刚分类的书签被外部移回！这可能是Chrome的默认行为或其他扩展的干扰。');
         
         // 检查是否偏离了预期位置
         const expectedFolder = expectedLocations.get(id);
         if (expectedFolder && newParentName !== expectedFolder) {
-          console.error(`⚠️ 书签应该在 "${expectedFolder}" 文件夹，但被移到了 "${newParentName}"`);
+          logger.error(`⚠️ 书签应该在 "${expectedFolder}" 文件夹，但被移到了 "${newParentName}"`);
           
           // 尝试移回正确位置
           // 尝试将书签移回正确位置
@@ -231,7 +232,7 @@ chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
                 movingBookmarks.delete(id);
               }
             } catch (error) {
-              console.error('移回书签失败:', error);
+              logger.error('移回书签失败:', error);
             }
           }, 1000); // 延迟1秒后尝试移回
         }
@@ -240,13 +241,13 @@ chrome.bookmarks.onMoved.addListener(async (id, moveInfo) => {
       // 这是我们插件的移动操作
     }
   } catch (error) {
-    console.error('获取移动书签信息失败:', error);
+    logger.error('获取移动书签信息失败:', error);
   }
 });
 
 // 监听书签变更事件
 chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
-  // console.log('书签更新事件触发:', id, changeInfo);
+  // logger.debug('书签更新事件触发:', id, changeInfo);
   
   // 检查是否是刚创建的书签的第一次更新
   const isRecentlyCreated = recentlyCreatedBookmarks.has(id);
@@ -313,7 +314,7 @@ chrome.bookmarks.onChanged.addListener(async (id, changeInfo) => {
  */
 async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, metadata: any, apiSettings: any, fromFolder?: string, isBatchMode: boolean = false) {
   try {
-    // console.log('开始分类书签:', bookmark.title);
+    // logger.debug('开始分类书签:', bookmark.title);
     
     if (!bookmark.url || !bookmark.title) {
       // 书签缺少必要信息，跳过分类
@@ -330,7 +331,7 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
     
     // 调用AI进行分类
     const result = await aiClassifyBookmark(bookmarkInfo, apiSettings);
-    // console.log('AI分类结果:', result);
+    // logger.debug('AI分类结果:', result);
     
     // 如果置信度高于阈值，则自动分类
     if (result.confidence > 0.7) {
@@ -349,7 +350,7 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
             'info'
           );
         } catch (error) {
-          console.error('更新书签标题失败:', error);
+          logger.error('更新书签标题失败:', error);
         }
       }
       
@@ -372,7 +373,7 @@ async function classifyBookmark(bookmark: chrome.bookmarks.BookmarkTreeNode, met
     }
     
   } catch (error) {
-    console.error('书签分类失败:', error);
+    logger.error('书签分类失败:', error);
     // 如果AI分类失败，使用备用的简单分类
     const category = await simulateAIClassification(bookmark);
     if (category) {
@@ -432,7 +433,7 @@ async function getParentFolderName(parentId: string): Promise<string> {
  */
 async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNode, category: string, isBatchMode: boolean = false) {
   try {
-    // console.log('开始移动书签:', bookmark.title, '->', category);
+    // logger.debug('开始移动书签:', bookmark.title, '->', category);
     
     // 检查是否正在移动中
     if (bookmark.id && movingBookmarks.has(bookmark.id)) {
@@ -504,7 +505,7 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
         movingBookmarks.delete(bookmark.id);
       }
     } else {
-      console.error('无法创建或找到目标文件夹:', category);
+      logger.error('无法创建或找到目标文件夹:', category);
       
       // 清除移动标记
       if (bookmark.id) {
@@ -512,7 +513,7 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
       }
     }
   } catch (error) {
-    console.error('移动书签失败:', error);
+    logger.error('移动书签失败:', error);
     
     // 清除移动标记
     if (bookmark.id) {
@@ -533,7 +534,7 @@ async function moveBookmarkToCategory(bookmark: chrome.bookmarks.BookmarkTreeNod
  * @returns 测试结果
  */
 async function testAPIConnection(apiSettings: any) {
-  // console.log('开始测试API连接:', apiSettings.provider);
+  // logger.debug('开始测试API连接:', apiSettings.provider);
   
   try {
     if (apiSettings.provider === 'openai') {
@@ -576,7 +577,7 @@ async function testAPIConnection(apiSettings: any) {
     
     return { success: false, error: '不支持的AI提供商' };
   } catch (error) {
-    console.error('测试API连接失败:', error);
+    logger.error('测试API连接失败:', error);
     return { success: false, error: error instanceof Error ? error.message : '网络连接失败' };
   }
 }
@@ -589,7 +590,7 @@ async function testAPIConnection(apiSettings: any) {
  */
 async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean = false): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
   try {
-    // console.log(`\\n[findOrCreateFolder] 开始查找或创建文件夹: "${folderName}", forceSmartFolder: ${forceSmartFolder}`);
+    // logger.debug(`\\n[findOrCreateFolder] 开始查找或创建文件夹: "${folderName}", forceSmartFolder: ${forceSmartFolder}`);
     
     // 获取书签树
     const bookmarkTree = await chrome.bookmarks.getTree();
@@ -609,11 +610,11 @@ async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean 
     }
     
     if (!bookmarkBarNode) {
-      console.error('找不到书签栏，尝试使用其他书签文件夹');
+      logger.error('找不到书签栏，尝试使用其他书签文件夹');
       // 使用"其他书签"作为备选
       bookmarkBarNode = bookmarkTree[0].children?.find(node => node.id === '2');
       if (!bookmarkBarNode) {
-        console.error('找不到任何可用的书签文件夹');
+        logger.error('找不到任何可用的书签文件夹');
         return null;
       }
     }
@@ -624,7 +625,7 @@ async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean 
     );
     
     if (categoryFolder) {
-      console.log(`[findOrCreateFolder] 在书签栏找到已有文件夹: "${folderName}" (ID: ${categoryFolder.id})`);
+      logger.debug(`[findOrCreateFolder] 在书签栏找到已有文件夹: "${folderName}" (ID: ${categoryFolder.id})`);
       return categoryFolder;
     }
     
@@ -636,7 +637,7 @@ async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean 
       categoryFolder = updatedSmartFolder.children?.find(node => node.title === folderName);
       
       if (categoryFolder) {
-        console.log(`使用智能分类中的文件夹: ${folderName}`);
+        logger.debug(`使用智能分类中的文件夹: ${folderName}`);
         return categoryFolder;
       }
     }
@@ -667,14 +668,14 @@ async function findOrCreateFolder(folderName: string, forceSmartFolder: boolean 
       return newFolder;
     } else {
       // 智能模式：单个书签直接在书签栏创建
-      console.log(`智能模式：在书签栏创建文件夹 "${folderName}"`);
+      logger.debug(`智能模式：在书签栏创建文件夹 "${folderName}"`);
       return await chrome.bookmarks.create({
         parentId: bookmarkBarNode.id,
         title: folderName
       });
     }
   } catch (error) {
-    console.error('创建文件夹失败:', error);
+    logger.error('创建文件夹失败:', error);
     return null;
   }
 }
@@ -725,7 +726,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           parentId: bookmarkBarNode.id,
           title: '智能分类'
         });
-        console.log('创建智能分类临时文件夹');
+        logger.debug('创建智能分类临时文件夹');
       }
       
       // 获取过滤器设置
@@ -781,7 +782,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       for (let i = 0; i < bookmarksToOrganize.length; i++) {
         // 检查是否暂停
         if (isOrganizePaused) {
-          console.log('整理已暂停，位置:', i);
+          logger.debug('整理已暂停，位置:', i);
           
           // 获取剩余未处理的书签ID
           const remainingBookmarkIds = bookmarksToOrganize.slice(i).map(b => b.id).filter(id => id) as string[];
@@ -862,7 +863,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
       sendResponse({ success: true, processed: bookmarksToOrganize.length });
       } catch (error) {
-        console.error('批量整理失败:', error);
+        logger.error('批量整理失败:', error);
         
         // 结束会话（错误状态）
         await organizeHistory.endSession('error');
@@ -889,7 +890,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 处理单个文件夹整理
     (async () => {
       try {
-        console.log('开始整理文件夹:', request.folderId);
+        logger.debug('开始整理文件夹:', request.folderId);
         
         // 获取API设置
         const settings = await chrome.storage.sync.get(['apiSettings']);
@@ -925,7 +926,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         
         sendResponse({ success: true, processed: bookmarksToOrganize.length });
       } catch (error) {
-        console.error('文件夹整理失败:', error);
+        logger.error('文件夹整理失败:', error);
         sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
       }
     })();
@@ -934,7 +935,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 预览整理（不实际移动）
     (async () => {
       try {
-        console.log('开始预览整理...');
+        logger.debug('开始预览整理...');
         
         // 获取所有书签
         const bookmarks = await chrome.bookmarks.getTree();
@@ -1011,7 +1012,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               }
             });
           } catch (error) {
-            console.error('预览书签分类失败:', error);
+            logger.error('预览书签分类失败:', error);
           }
           
           // 添加延迟
@@ -1023,7 +1024,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         
         sendResponse({ success: true, results: previewResults });
       } catch (error) {
-        console.error('预览失败:', error);
+        logger.error('预览失败:', error);
         sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
       }
     })();
@@ -1065,7 +1066,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sendResponse({ success: false, error: '书签不存在' });
         }
       } catch (error) {
-        console.error('移动书签失败:', error);
+        logger.error('移动书签失败:', error);
         sendResponse({ success: false, error: error instanceof Error ? error.message : '未知错误' });
       }
     })();
@@ -1181,7 +1182,7 @@ async function isInSmartFolder(bookmark: chrome.bookmarks.BookmarkTreeNode): Pro
     
     return false;
   } catch (error) {
-    console.error('检查书签位置失败:', error);
+    logger.error('检查书签位置失败:', error);
     return false;
   }
 }
