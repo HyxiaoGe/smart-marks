@@ -6,23 +6,22 @@ const manifest = {
   version: "0.1.0",
   description: "智能书签管理Chrome扩展，使用AI自动将书签分类整理到合适的文件夹中",
 
-  // 图标配置 - 暂时注释，使用 Plasmo 默认处理
-  // icons: {
-  //   "16": "assets/icon16.png",
-  //   "32": "assets/icon32.png",
-  //   "48": "assets/icon48.png",
-  //   "128": "assets/icon128.png"
-  // },
+  // 图标配置
+  icons: {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
 
   // 弹出窗口配置
   action: {
     default_popup: "popup.html",
-    default_title: "Smart Marks - 智能书签管理器"
-    // 暂时移除图标配置
-    // default_icon: {
-    //   "16": "assets/icon16.png",
-    //   "32": "assets/icon32.png"
-    // }
+    default_title: "Smart Marks - 智能书签管理器",
+    default_icon: {
+      "16": "assets/icon16.png",
+      "32": "assets/icon32.png"
+    }
   },
   
   // 后台脚本配置
