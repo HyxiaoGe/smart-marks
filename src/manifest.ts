@@ -45,31 +45,7 @@ const manifest: PlasmoManifest = {
     "https://api.deepseek.com/*",  // Deepseek API
     "https://api.linkpreview.net/*",  // LinkPreview API
     "https://description-scraper.onrender.com/*"  // 自托管的描述抓取服务
-  ],
-  
-  // 内容安全策略
-  content_security_policy: {
-    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
-  },
-  
-  // 网络请求权限（用于调用AI API）
-  externally_connectable: {
-    matches: [
-      "https://api.openai.com/*",
-      "https://generativelanguage.googleapis.com/*"
-    ]
-  },
-  
-  // Web accessible resources（用于访问页面资源）
-  web_accessible_resources: [
-    {
-      resources: ["tabs/*"],
-      matches: ["<all_urls>"]
-    }
-  ],
-
-  // 最小Chrome版本要求
-  minimum_chrome_version: "114"
+  ]
 }
 
 export default manifest
